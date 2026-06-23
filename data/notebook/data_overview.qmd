@@ -1,0 +1,195 @@
+---
+title: "data_overview"
+format: html
+editor: source
+---
+
+```{r, message=FALSE}
+library(tidyverse)
+library(knitr)
+library(readxl)
+library(ggVennDiagram)
+```
+
+First I read wes to uniform the ID from BEAT and TCGA
+
+```{r}
+wes <- read_xlsx("../raw/WES_filtered_final.xlsx") %>%
+  mutate(ID = if_else(cohort == "TCGA", str_remove(ID, "-03"), ID))
+```
+
+BEAT-AML file mapping is available on <https://github.com/biodev/beataml2.0_data>.
+
+```{r}
+kable(tribble(
+  ~file, ~data_type, ~cohort, ~content, ~notes,
+  "210126_BEAT-AML_CPM-TMM_log2_with_hugo.tsv.xz", "transcriptomics", "BEAT-AML", "gene expression", "log2 CPM-TMM; Hugo symbols",
+  "200221_TCGA-LAML_CPM-TMM.tsv.xz", "transcriptomics", "TCGA-LAML", "gene expression", "linear CPM-TMM; Ensembl IDs plus Hugo column",
+  "WES_filtered_final.xlsx", "genomics", "BEAT-AML / TCGA / NGS-PTL", "somatic mutations", "long-format mutation table",
+  "Metabolome.xlsx", "metabolomics", "NGS-PTL", "metabolite abundance", "linear and log-transformed sheets",
+  "Human-GEM.xlsx", "reference", "all", "genome-scale metabolic model", "genes, reactions, metabolites, subsystems",
+  "Karyotype and other variables.xlsx", "clinical/cytogenetic", "mixed", "karyotype and variables", "currently appears incomplete",
+  "beataml_waves1to4_sample_mapping.xlsx", "metadata", "BEAT-AML", "sample ID mapping", "maps expr IDs (BAxxxxR) to WES IDs (labId); source: Bottomly et al. 2022",
+  "Metodi per integrazione metabolismo-trascrittomica.pdf", "reference", NA, "method paper", "metabolic-transcriptomic integration"
+))
+```
+
+## BEAT
+
+```{r}
+expr_beat <- read_tsv("../raw/210126_BEAT-AML_CPM-TMM_log2_with_hugo.tsv.xz",
+                 show_col_types = FALSE) %>%
+  column_to_rownames("symbol") %>%
+  t() %>% as_tibble(rownames = "dbgap_rnaseq_sample")
+
+meta_beat <- read_xlsx("../raw/beataml_waves1to4_sample_mapping.xlsx") %>%
+  filter(rna_include_in_analysis == "yes")
+
+expr_beat <- expr_beat %>%
+  left_join(select(meta_beat, dbgap_rnaseq_sample, labId),
+            by = "dbgap_rnaseq_sample") %>%
+  relocate(labId, .after = "dbgap_rnaseq_sample") %>%
+  select(-dbgap_rnaseq_sample)
+```
+
+```{r, fig.width=4, fig.height=3.5}
+sample_id_wes <- wes %>%
+    filter(cohort == "BEAT-AML") %>% pull(ID) %>% unique()
+ggVennDiagram(x = list(wes = sample_id_wes, rna = expr_beat$labId))
+rm(sample_id_wes)
+```
+
+```{r}
+expr_beat_wes <- expr_beat %>%
+  filter(labId %in% intersect(unique(wes$ID), labId))
+```
+
+
+## TCGA
+
+```{r}
+expr_tcga <- read_tsv("../raw/200221_TCGA-LAML_CPM-TMM.tsv.xz",
+                      show_col_types = FALSE)
+```
+
+```{r}
+expr_tcga %>%
+  group_by(hugo) %>%
+  filter(n() > 1) %>%
+  relocate(hugo) %>%
+  arrange(hugo)
+```
+
+```{r}
+expr_tcga <- expr_tcga %>%
+  filter(!is.na(hugo)) %>%
+  group_by(hugo) %>%
+  filter(n() == 1) %>%
+  ungroup() 
+
+taxa_tcga <- expr_tcga %>%
+  select(hugo, ensembl_gene_id)
+
+expr_tcga <- expr_tcga %>%
+  select(-ensembl_gene_id) %>%
+  column_to_rownames("hugo") %>%
+  t() %>%
+  as_tibble(rownames = "sample_id")
+```
+
+```{r, fig.width=4, fig.height=3.5}
+sample_id_wes <- wes %>%
+    filter(cohort == "TCGA") %>% pull(ID) %>% unique()
+ggVennDiagram(x = list(wes = sample_id_wes, rna = expr_tcga$sample_id))
+rm(sample_id_wes)
+```
+
+```{r}
+expr_tcga_wes <- expr_tcga %>%
+  filter(sample_id %in% intersect(unique(wes$ID), sample_id))
+```
+
+
+## Comparison between BEAT and TCGA
+
+```{r, fig.width=4, fig.height=3.5}
+ggVennDiagram(x = list(beat = colnames(expr_beat)[-1], tcga = colnames(expr_tcga)[-1]))
+```
+
+```{r}
+inter <- intersect(colnames(expr_beat_wes)[-1], colnames(expr_tcga_wes)[-1])
+only_beat <- setdiff(colnames(expr_beat_wes)[-1], colnames(expr_tcga_wes)[-1])
+sum(expr_beat_wes[, inter]) / sum(expr_beat_wes[, -1])
+sum(expr_tcga_wes[, inter]) / sum(expr_tcga_wes[, -1])
+
+sum(expr_beat_wes[, only_beat])
+expr_only_beat <- expr_beat_wes[, only_beat]
+sum(expr_only_beat == 0) / length(as.matrix(expr_only_beat))
+sum(expr_beat_wes[, inter])
+
+rm(inter, only_beat)
+```
+
+```{r}
+expr_beat_wes %>%
+  rename(sample_id = labId) %>%
+  write_tsv(xzfile("../processed/expr_beat_wes.tsv.xz"))
+```
+
+```{r}
+expr_tcga %>%
+  write_tsv(xzfile("../processed/expr_tcga_wes.tsv.xz"))
+```
+
+## META
+
+```{r, message=FALSE}
+karyotype <- read_xlsx("../raw/Karyotype and other variables.xlsx", col_types = "text") %>%
+  select(-2, -6) %>%
+  rename(Disease_Type = Disease.type, sample_id = ID)
+```
+
+```{r}
+meta_beat_wes <- meta_beat %>%
+  filter(labId %in% expr_beat_wes$labId) %>%
+  relocate(labId) %>%
+  rename(sample_id = labId) %>%
+  left_join(
+    karyotype %>%
+      filter(cohort == "BEAT-AML") %>%
+      select(sample_id, Patient_Id, Gender, Disease_Type),
+    by = "sample_id"
+  )
+```
+
+```{r}
+meta_tcga_wes <- karyotype %>%
+  filter(cohort == "TCGA") %>%
+  filter(sample_id %in% expr_tcga_wes$sample_id)
+```
+
+```{r}
+meta_beat_wes <- meta_beat_wes %>%
+  arrange(match(sample_id, expr_beat_wes$labId))
+
+meta_tcga_wes <- meta_tcga_wes %>%
+  arrange(match(sample_id, expr_tcga_wes$sample_id))
+```
+
+```{r}
+write_tsv(meta_beat_wes, "../processed/meta_beat_wes.tsv")
+write_tsv(meta_tcga_wes, "../processed/meta_tcga_wes.tsv")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
