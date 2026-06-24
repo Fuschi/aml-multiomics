@@ -41,3 +41,6 @@ po/*~
 
 # RStudio Connect folder
 rsconnect/
+
+# Quarto intermediate files
+*_files/

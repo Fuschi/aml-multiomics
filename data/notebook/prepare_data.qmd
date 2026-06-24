@@ -1,0 +1,231 @@
+---
+title: "prepare_data"
+format: html
+editor: source
+---
+
+Reads raw files from all three cohorts, aligns samples to WES IDs, and writes clean matrices to `processed/`.
+
+```{r, message=FALSE}
+library(tidyverse)
+library(knitr)
+library(readxl)
+library(ggVennDiagram)
+```
+
+## WES mutations
+
+Long-format somatic mutation table shared across BEAT-AML, TCGA, and NGS-PTL. TCGA sample IDs have their `-03` suffix stripped to match the format used in the expression data.
+
+```{r}
+wes <- read_xlsx("../raw/WES_filtered_final.xlsx") |>
+  mutate(ID = if_else(cohort == "TCGA", str_remove(ID, "-03"), ID))
+```
+
+## BEAT-AML expression
+
+The expression matrix uses RNA-seq IDs (`dbgap_rnaseq_sample`). The sample mapping table (source: [Bottomly et al. 2022](https://github.com/biodev/beataml2.0_data)) converts these to WES IDs (`labId`), keeping only samples flagged for inclusion.
+
+```{r}
+expr_beat <- read_tsv("../raw/210126_BEAT-AML_CPM-TMM_log2_with_hugo.tsv.xz",
+                      show_col_types = FALSE) |>
+  column_to_rownames("symbol") |>
+  t() |>
+  as_tibble(rownames = "dbgap_rnaseq_sample")
+
+meta_beat <- read_xlsx("../raw/beataml_waves1to4_sample_mapping.xlsx") |>
+  filter(rna_include_in_analysis == "yes")
+
+expr_beat <- expr_beat |>
+  left_join(select(meta_beat, dbgap_rnaseq_sample, labId),
+            by = "dbgap_rnaseq_sample") |>
+  relocate(labId, .after = "dbgap_rnaseq_sample") |>
+  select(-dbgap_rnaseq_sample)
+```
+
+Keep only samples present in both expression and WES.
+
+```{r, fig.width=4, fig.height=3.5}
+sample_id_wes <- wes |> filter(cohort == "BEAT-AML") |> pull(ID) |> unique()
+ggVennDiagram(x = list(wes = sample_id_wes, rna = expr_beat$labId))
+rm(sample_id_wes)
+```
+
+```{r}
+expr_beat_aml <- expr_beat |>
+  filter(labId %in% intersect(unique(wes$ID), labId))
+```
+
+## TCGA-AML expression
+
+The raw file has one row per Ensembl ID with a `hugo` column. Rows with missing or duplicated Hugo symbols are removed before pivoting to wide format (samples × genes).
+
+```{r}
+expr_tcga <- read_tsv("../raw/200221_TCGA-LAML_CPM-TMM.tsv.xz",
+                      show_col_types = FALSE)
+```
+
+Inspect duplicated Hugo symbols before dropping them.
+
+```{r}
+expr_tcga |>
+  group_by(hugo) |>
+  filter(n() > 1) |>
+  relocate(hugo) |>
+  arrange(hugo)
+```
+
+```{r}
+taxa_tcga <- expr_tcga |> select(hugo, ensembl_gene_id)
+
+expr_tcga <- expr_tcga |>
+  filter(!is.na(hugo)) |>
+  group_by(hugo) |>
+  filter(n() == 1) |>
+  ungroup() |>
+  select(-ensembl_gene_id) |>
+  column_to_rownames("hugo") |>
+  t() |>
+  as_tibble(rownames = "sample_id")
+```
+
+Keep only samples present in both expression and WES.
+
+```{r, fig.width=4, fig.height=3.5}
+sample_id_wes <- wes |> filter(cohort == "TCGA") |> pull(ID) |> unique()
+ggVennDiagram(x = list(wes = sample_id_wes, rna = expr_tcga$sample_id))
+rm(sample_id_wes)
+```
+
+```{r}
+expr_tcga_aml <- expr_tcga |>
+  filter(sample_id %in% intersect(unique(wes$ID), sample_id))
+```
+
+## Gene overlap: BEAT-AML vs TCGA-AML
+
+The two cohorts were normalised independently and cannot be merged. Genes exclusive to BEAT-AML are nearly all zero (>99% zero counts) and will be dropped when filtering to Human-GEM metabolic genes.
+
+```{r, fig.width=4, fig.height=3.5}
+ggVennDiagram(x = list(beat = colnames(expr_beat_aml)[-1],
+                       tcga = colnames(expr_tcga_aml)[-1]))
+```
+
+```{r}
+inter     <- intersect(colnames(expr_beat_aml)[-1], colnames(expr_tcga_aml)[-1])
+only_beat <- setdiff(colnames(expr_beat_aml)[-1], colnames(expr_tcga_aml)[-1])
+
+cat("Shared gene expression fraction — BEAT:", sum(expr_beat_aml[, inter]) / sum(expr_beat_aml[, -1]), "\n")
+cat("Shared gene expression fraction — TCGA:", sum(expr_tcga_aml[, inter]) / sum(expr_tcga_aml[, -1]), "\n")
+cat("Zero fraction in BEAT-only genes:", sum(expr_beat_aml[, only_beat] == 0) / length(as.matrix(expr_beat_aml[, only_beat])), "\n")
+
+rm(inter, only_beat)
+```
+
+## Export expression matrices
+
+```{r}
+expr_beat_aml |>
+  rename(sample_id = labId) |>
+  write_tsv(xzfile("../processed/beat_aml_expression.tsv.xz"))
+
+expr_tcga_aml |>
+  write_tsv(xzfile("../processed/tcga_aml_expression.tsv.xz"))
+```
+
+## Metadata
+
+Sample-level metadata assembled from the karyotype file and the BEAT-AML mapping table. Rows are sorted to match the expression matrix row order.
+
+```{r, message=FALSE}
+karyotype <- read_xlsx("../raw/Karyotype and other variables.xlsx", col_types = "text") |>
+  select(-2, -6) |>
+  rename(Disease_Type = Disease.type, sample_id = ID)
+```
+
+```{r}
+beat_aml_metadata <- meta_beat |>
+  filter(labId %in% expr_beat_aml$labId) |>
+  relocate(labId) |>
+  rename(sample_id = labId) |>
+  left_join(
+    karyotype |>
+      filter(cohort == "BEAT-AML") |>
+      select(sample_id, Patient_Id, Gender, Disease_Type),
+    by = "sample_id"
+  ) |>
+  arrange(match(sample_id, expr_beat_aml$labId))
+
+tcga_aml_metadata <- karyotype |>
+  filter(cohort == "TCGA") |>
+  filter(sample_id %in% expr_tcga_aml$sample_id) |>
+  arrange(match(sample_id, expr_tcga_aml$sample_id))
+
+write_tsv(beat_aml_metadata,  "../processed/beat_aml_metadata.tsv")
+write_tsv(tcga_aml_metadata, "../processed/tcga_aml_metadata.tsv")
+```
+
+## Human-GEM: metabolic gene annotation
+
+Human-GEM links genes to metabolic subsystems through GPR (gene–protein–reaction) rules encoded as Boolean expressions with Ensembl IDs. We extract a flat gene → subsystem table used downstream to filter expression matrices to metabolic genes before WGCNA.
+
+```{r}
+gem_genes <- read_xlsx("../raw/Human-GEM.xlsx", sheet = "GENES") |>
+  select(ensembl_id = NAME, hugo = `SHORT NAME`)
+
+gem_rxns <- read_xlsx("../raw/Human-GEM.xlsx", sheet = "RXNS") |>
+  select(reaction_id = ID,
+         reaction_name = NAME,
+         gene_association = `GENE ASSOCIATION`,
+         subsystem = SUBSYSTEM) |>
+  filter(!is.na(gene_association))
+
+gem <- gem_rxns |>
+  mutate(ensembl_id = str_extract_all(gene_association, "ENSG\\d+")) |>
+  unnest(ensembl_id) |>
+  left_join(gem_genes, by = "ensembl_id") |>
+  filter(!is.na(hugo)) |>
+  select(hugo, ensembl_id, reaction_id, reaction_name, subsystem) |>
+  distinct()
+
+gem_by_gene <- gem |>
+  group_by(hugo, ensembl_id) |>
+  summarise(
+    n_reactions  = n(),
+    n_subsystems = n_distinct(subsystem),
+    subsystems   = paste(unique(subsystem), collapse = ";"),
+    reactions    = paste(unique(reaction_id), collapse = ";"),
+    .groups = "drop"
+  )
+
+write_tsv(gem_by_gene, "../processed/gem_gene_subsystems.tsv")
+```
+
+Metabolic gene coverage in each cohort:
+
+```{r}
+cat("BEAT-AML:", length(intersect(colnames(expr_beat_aml), gem_genes$hugo)), "metabolic genes\n")
+cat("TCGA-LAML:", length(intersect(colnames(expr_tcga_aml), gem_genes$hugo)), "metabolic genes\n")
+```
+
+## NGS-PTL metabolomics
+
+Log-transformed, DNA-normalised metabolite abundance matrix (sheet: *Log Transformed DNANormImpData*). Samples whose ID starts with `CONTROL` are healthy CD34+ progenitors; all others are AML.
+
+```{r}
+metabolome_raw <- read_xlsx("../raw/Metabolome.xlsx",
+                            sheet = "Log Transformed DNANormImpData") |>
+  rename(metabolite = 1) |>
+  filter(metabolite != "Metabolite") |>
+  column_to_rownames("metabolite")
+
+ngs_ptl_metabolome <- metabolome_raw |>
+  t() |>
+  as_tibble(rownames = "sample_id")
+
+ngs_ptl_metadata <- tibble(sample_id = colnames(metabolome_raw)) |>
+  mutate(sample_type = if_else(str_starts(sample_id, "CONTROL"), "control", "AML"))
+
+write_tsv(ngs_ptl_metabolome, "../processed/ngs_ptl_metabolome.tsv")
+write_tsv(ngs_ptl_metadata,   "../processed/ngs_ptl_metadata.tsv")
+```
