@@ -173,40 +173,203 @@ Human-GEM links genes to metabolic subsystems through GPR (gene–protein–reac
 gem_genes <- read_xlsx("../raw/Human-GEM.xlsx", sheet = "GENES") |>
   select(ensembl_id = NAME, hugo = `SHORT NAME`)
 
+# Official annotation (gene names, UniProt, compartment)
+gem_genes_official <- read_tsv("../raw/Human-GEM-official.tsv",
+                                show_col_types = FALSE) |>
+  select(ensembl_id  = genes,
+         gene_name   = geneNames,
+         uniprot     = geneUniProtID,
+         compartment = compartments)
+
 gem_rxns <- read_xlsx("../raw/Human-GEM.xlsx", sheet = "RXNS") |>
-  select(reaction_id = ID,
-         reaction_name = NAME,
+  select(reaction_id      = ID,
+         reaction_name    = NAME,
          gene_association = `GENE ASSOCIATION`,
-         subsystem = SUBSYSTEM) |>
+         subsystem        = SUBSYSTEM) |>
   filter(!is.na(gene_association))
+
+pathway_map <- tribble(
+  ~subsystem, ~pathway_class,
+  "Glycolysis / Gluconeogenesis",                                      "Carbohydrate metabolism",
+  "Starch and sucrose metabolism",                                      "Carbohydrate metabolism",
+  "Galactose metabolism",                                               "Carbohydrate metabolism",
+  "Fructose and mannose metabolism",                                    "Carbohydrate metabolism",
+  "Pentose and glucuronate interconversions",                           "Carbohydrate metabolism",
+  "Pyruvate metabolism",                                                "Carbohydrate metabolism",
+  "Propanoate metabolism",                                              "Carbohydrate metabolism",
+  "Butanoate metabolism",                                               "Carbohydrate metabolism",
+  "Pentose phosphate pathway",                                          "Carbohydrate metabolism",
+  "Pentose Phosphate Pathway",                                          "Carbohydrate metabolism",
+  "Tricarboxylic acid cycle and glyoxylate/dicarboxylate metabolism",   "Carbohydrate metabolism",
+  "Glyoxylate and dicarboxylate metabolism",                           "Carbohydrate metabolism",
+  "Purine metabolism",                                                  "Nucleotide metabolism",
+  "Pyrimidine metabolism",                                              "Nucleotide metabolism",
+  "Nucleotide metabolism",                                              "Nucleotide metabolism",
+  "Aminoacyl-tRNA biosynthesis",                                        "Nucleotide metabolism",
+  "Alanine, aspartate and glutamate metabolism",                        "Amino acid metabolism",
+  "Arginine and proline metabolism",                                    "Amino acid metabolism",
+  "Histidine metabolism",                                               "Amino acid metabolism",
+  "Glycine, serine and threonine metabolism",                           "Amino acid metabolism",
+  "Lysine metabolism",                                                  "Amino acid metabolism",
+  "Tryptophan metabolism",                                              "Amino acid metabolism",
+  "Tyrosine metabolism",                                                "Amino acid metabolism",
+  "Valine, leucine, and isoleucine metabolism",                         "Amino acid metabolism",
+  "Phenylalanine, tyrosine and tryptophan biosynthesis",                "Amino acid metabolism",
+  "Cysteine and methionine metabolism",                                 "Amino acid metabolism",
+  "Glutathione metabolism",                                             "Amino acid metabolism",
+  "Beta-alanine metabolism",                                            "Amino acid metabolism",
+  "Metabolism of other amino acids",                                    "Amino acid metabolism",
+  "Phenylalanine metabolism",                                           "Amino acid metabolism",
+  "Urea cycle",                                                         "Amino acid metabolism",
+  "Sulfur metabolism",                                                  "Amino acid metabolism",
+  "C5-branched dibasic acid metabolism",                                "Amino acid metabolism",
+  "Serotonin and melatonin biosynthesis",                               "Amino acid metabolism",
+  "Fatty acid activation (cytosolic)",                                  "Lipid metabolism",
+  "Fatty acid activation (endoplasmic reticular)",                      "Lipid metabolism",
+  "Fatty acid biosynthesis (even-chain)",                               "Lipid metabolism",
+  "Fatty acid biosynthesis (odd-chain)",                                "Lipid metabolism",
+  "Fatty acid biosynthesis (unsaturated)",                              "Lipid metabolism",
+  "Fatty acid elongation (even-chain)",                                 "Lipid metabolism",
+  "Fatty acid elongation (odd-chain)",                                  "Lipid metabolism",
+  "Fatty acid desaturation (even-chain)",                               "Lipid metabolism",
+  "Fatty acid desaturation (odd-chain)",                                "Lipid metabolism",
+  "Fatty acid biosynthesis",                                            "Lipid metabolism",
+  "Fatty acid oxidation",                                               "Lipid metabolism",
+  "Fatty acid degradation",                                             "Lipid metabolism",
+  "Fatty acid metabolism",                                              "Lipid metabolism",
+  "Linoleate metabolism",                                               "Lipid metabolism",
+  "Lipoic acid metabolism",                                             "Lipid metabolism",
+  "Omega-3 fatty acid metabolism",                                      "Lipid metabolism",
+  "Omega-6 fatty acid metabolism",                                      "Lipid metabolism",
+  "Arachidonic acid metabolism",                                        "Lipid metabolism",
+  "\tArachidonic acid metabolism",                                       "Lipid metabolism",
+  "Leukotriene metabolism",                                             "Lipid metabolism",
+  "Eicosanoid metabolism",                                              "Lipid metabolism",
+  "Acyl-CoA hydrolysis",                                                "Lipid metabolism",
+  "Carnitine shuttle (cytosolic)",                                      "Lipid metabolism",
+  "Carnitine shuttle (mitochondrial)",                                  "Lipid metabolism",
+  "Carnitine shuttle (peroxisomal)",                                    "Lipid metabolism",
+  "Carnitine shuttle (endoplasmic reticular)",                          "Lipid metabolism",
+  "Acylglycerides metabolism",                                          "Lipid metabolism",
+  "Beta oxidation of even-chain fatty acids (peroxisomal)",             "Lipid metabolism",
+  "Beta oxidation of odd-chain fatty acids (peroxisomal)",              "Lipid metabolism",
+  "Beta oxidation of unsaturated fatty acids (n-9) (peroxisomal)",      "Lipid metabolism",
+  "Beta oxidation of phytanic acid (peroxisomal)",                      "Lipid metabolism",
+  "Beta oxidation of di-unsaturated fatty acids (n-6) (peroxisomal)",   "Lipid metabolism",
+  "Beta oxidation of even-chain fatty acids (mitochondrial)",           "Lipid metabolism",
+  "Beta oxidation of odd-chain fatty acids (mitochondrial)",            "Lipid metabolism",
+  "Beta oxidation of unsaturated fatty acids (n-7) (mitochondrial)",    "Lipid metabolism",
+  "Beta oxidation of unsaturated fatty acids (n-7) (peroxisomal)",      "Lipid metabolism",
+  "Beta oxidation of unsaturated fatty acids (n-9) (mitochondrial)",    "Lipid metabolism",
+  "Beta oxidation of di-unsaturated fatty acids (n-6) (mitochondrial)", "Lipid metabolism",
+  "Beta oxidation of poly-unsaturated fatty acids (mitochondrial)",     "Lipid metabolism",
+  "Beta oxidation of branched-chain fatty acids (mitochondrial)",       "Lipid metabolism",
+  "Terpenoid backbone biosynthesis",                                    "Lipid metabolism",
+  "Steroid metabolism",                                                 "Lipid metabolism",
+  "Androgen metabolism",                                                "Lipid metabolism",
+  "Cholesterol biosynthesis 1 (Bloch pathway)",                         "Lipid metabolism",
+  "Cholesterol biosynthesis 2",                                         "Lipid metabolism",
+  "Cholesterol biosynthesis 3 (Kandustch-Russell pathway)",             "Lipid metabolism",
+  "Cholesterol metabolism",                                             "Lipid metabolism",
+  "Estrogen metabolism",                                                "Lipid metabolism",
+  "Formation and hydrolysis of cholesterol esters",                     "Lipid metabolism",
+  "Sphingolipid metabolism",                                            "Lipid metabolism",
+  "Glycerolipid metabolism",                                            "Lipid metabolism",
+  "Glycerophospholipid metabolism",                                     "Lipid metabolism",
+  "Glucocorticoid biosynthesis",                                        "Lipid metabolism",
+  "Prostaglandin biosynthesis",                                         "Lipid metabolism",
+  "Ether lipid metabolism",                                             "Lipid metabolism",
+  "Bile acid biosynthesis",                                             "Lipid metabolism",
+  "Bile acid recycling",                                                "Lipid metabolism",
+  "Triacylglycerol synthesis",                                          "Lipid metabolism",
+  "Inositol phosphate metabolism",                                      "Lipid metabolism",
+  "Phosphatidylinositol phosphate metabolism",                          "Lipid metabolism",
+  "Oxidative phosphorylation",                                          "Energy metabolism",
+  "ROS detoxification",                                                 "Energy metabolism",
+  "Ubiquinone synthesis",                                               "Energy metabolism",
+  "Ubiquinone and other terpenoid-quinone biosynthesis",                "Energy metabolism",
+  "O-glycan metabolism",                                                "Glycan metabolism",
+  "N-glycan metabolism",                                                "Glycan metabolism",
+  "Amino sugar and nucleotide sugar metabolism",                        "Glycan metabolism",
+  "Glycosphingolipid biosynthesis-ganglio series",                      "Glycan metabolism",
+  "Glycosphingolipid biosynthesis-globo series",                        "Glycan metabolism",
+  "Glycosphingolipid biosynthesis-lacto and neolacto series",           "Glycan metabolism",
+  "Glycosphingolipid metabolism",                                       "Glycan metabolism",
+  "Glycosylphosphatidylinositol (GPI)-anchor biosynthesis",             "Glycan metabolism",
+  "Chondroitin / heparan sulfate biosynthesis",                         "Glycan metabolism",
+  "Chondroitin sulfate degradation",                                    "Glycan metabolism",
+  "Heparan sulfate degradation",                                        "Glycan metabolism",
+  "Keratan sulfate biosynthesis",                                       "Glycan metabolism",
+  "Keratan sulfate degradation",                                        "Glycan metabolism",
+  "Blood group biosynthesis",                                           "Glycan metabolism",
+  "Nicotinate and nicotinamide metabolism",                             "Vitamin and cofactor metabolism",
+  "Pantothenate and CoA metabolism",                                    "Vitamin and cofactor metabolism",
+  "Folate metabolism",                                                  "Vitamin and cofactor metabolism",
+  "Biotin metabolism",                                                  "Vitamin and cofactor metabolism",
+  "Biopterin metabolism",                                               "Vitamin and cofactor metabolism",
+  "Ascorbate and aldarate metabolism",                                  "Vitamin and cofactor metabolism",
+  "Porphyrin metabolism",                                               "Vitamin and cofactor metabolism",
+  "Retinol metabolism",                                                 "Vitamin and cofactor metabolism",
+  "Riboflavin metabolism",                                              "Vitamin and cofactor metabolism",
+  "Thiamine metabolism",                                                "Vitamin and cofactor metabolism",
+  "Vitamin B12 metabolism",                                             "Vitamin and cofactor metabolism",
+  "Vitamin B6 metabolism",                                              "Vitamin and cofactor metabolism",
+  "Vitamin D metabolism",                                               "Vitamin and cofactor metabolism",
+  "Vitamin E metabolism",                                               "Vitamin and cofactor metabolism",
+  "Vitamin C metabolism",                                               "Vitamin and cofactor metabolism",
+  "Vitamin A metabolism",                                               "Vitamin and cofactor metabolism",
+  "Vitamin B2 metabolism",                                              "Vitamin and cofactor metabolism",
+  "Heme degradation",                                                   "Vitamin and cofactor metabolism",
+  "Protein assembly",                                                   "Protein metabolism",
+  "Protein modification",                                               "Protein metabolism",
+  "Protein degradation",                                                "Protein metabolism",
+  "Peptide metabolism",                                                 "Protein metabolism",
+  "Transport reactions",                                                "Transport",
+  "Exchange/demand reactions",                                          "Transport",
+  "Xenobiotics metabolism",                                             "Xenobiotics",
+  "Drug metabolism",                                                    "Xenobiotics",
+  "Toluene degradation",                                                "Xenobiotics",
+  "octane oxidation",                                                   "Xenobiotics",
+  "Alkaloids biosynthesis",                                             "Xenobiotics",
+  "Hippurate metabolism",                                               "Xenobiotics",
+  "Insect hormone biosynthesis",                                        "Xenobiotics",
+  "Dietary fiber binding",                                              "Xenobiotics",
+  "Miscellaneous",                                                      "Other",
+  "Isolated",                                                           "Other",
+  "Pool reactions",                                                     "Other",
+  "Artificial reactions",                                               "Other",
+  "non_metabolic",                                                      "non_metabolic"
+)
 
 gem <- gem_rxns |>
   mutate(ensembl_id = str_extract_all(gene_association, "ENSG\\d+")) |>
   unnest(ensembl_id) |>
-  left_join(gem_genes, by = "ensembl_id") |>
+  left_join(gem_genes,          by = "ensembl_id") |>
+  left_join(gem_genes_official, by = "ensembl_id") |>
+  left_join(pathway_map,        by = "subsystem") |>
   filter(!is.na(hugo)) |>
-  select(hugo, ensembl_id, reaction_id, reaction_name, subsystem) |>
+  select(hugo, ensembl_id, gene_name, uniprot, compartment,
+         reaction_id, reaction_name, subsystem, pathway_class) |>
   distinct()
 
 gem_by_gene <- gem |>
-  group_by(hugo, ensembl_id) |>
+  group_by(hugo, ensembl_id, gene_name, uniprot, compartment) |>
   summarise(
-    n_reactions  = n(),
-    n_subsystems = n_distinct(subsystem),
-    subsystems   = paste(unique(subsystem), collapse = ";"),
-    reactions    = paste(unique(reaction_id), collapse = ";"),
+    n_reactions   = n_distinct(reaction_id),
+    n_subsystems  = n_distinct(subsystem),
+    subsystems    = paste(unique(subsystem),    collapse = ";"),
+    pathway_class = paste(unique(pathway_class), collapse = ";"),
+    reactions     = paste(unique(reaction_id),  collapse = ";"),
     .groups = "drop"
   )
 
-write_tsv(gem_by_gene, "../processed/gem_gene_subsystems.tsv")
+cat("Unique metabolic genes:", nrow(gem_by_gene), "\n")
+cat("Unique subsystems:     ", n_distinct(gem$subsystem), "\n")
+cat("Gene × reaction pairs: ", nrow(gem), "\n")
+
+write_tsv(gem_by_gene, "../processed/human_gem_gene_subsystem_summary.tsv")
 ```
 
-Metabolic gene coverage in each cohort:
-
-```{r}
-cat("BEAT-AML:", length(intersect(colnames(expr_beat_aml), gem_genes$hugo)), "metabolic genes\n")
-cat("TCGA-LAML:", length(intersect(colnames(expr_tcga_aml), gem_genes$hugo)), "metabolic genes\n")
-```
 
 ## NGS-PTL metabolomics
 
