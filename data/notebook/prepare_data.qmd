@@ -20,6 +20,15 @@ Long-format somatic mutation table shared across BEAT-AML, TCGA, and NGS-PTL. TC
 ```{r}
 wes <- read_xlsx("../raw/WES_filtered_final.xlsx") |>
   mutate(ID = if_else(cohort == "TCGA", str_remove(ID, "-03"), ID))
+
+# Binary mutation matrix
+wes_wide <- wes %>%
+  distinct(ID, gene_symbol) %>%
+  mutate(mutated = TRUE) %>%
+  pivot_wider(names_from  = gene_symbol,
+              values_from = mutated,
+              values_fill = FALSE) %>%
+  rename(sample_id = ID) 
 ```
 
 ## BEAT-AML expression
@@ -42,6 +51,7 @@ expr_beat <- expr_beat |>
   relocate(labId, .after = "dbgap_rnaseq_sample") |>
   select(-dbgap_rnaseq_sample)
 ```
+
 
 Keep only samples present in both expression and WES.
 
@@ -154,7 +164,8 @@ beat_aml_metadata <- meta_beat |>
       select(sample_id, Patient_Id, Gender, Disease_Type),
     by = "sample_id"
   ) |>
-  arrange(match(sample_id, expr_beat_aml$labId))
+  arrange(match(sample_id, expr_beat_aml$labId)) %>%
+  mutate(cohort = "BEAT")
 
 tcga_aml_metadata <- karyotype |>
   filter(cohort == "TCGA") |>
@@ -164,6 +175,20 @@ tcga_aml_metadata <- karyotype |>
 write_tsv(beat_aml_metadata,  "../processed/beat_aml_metadata.tsv")
 write_tsv(tcga_aml_metadata, "../processed/tcga_aml_metadata.tsv")
 ```
+
+## Save Wide Wes info
+
+```{r}
+map_sample_cohort <- bind_rows(beat_aml_metadata, tcga_aml_metadata) %>%
+  select(sample_id, cohort) 
+
+wes_wide <- left_join(wes_wide, map_sample_cohort, by = "sample_id") %>%
+  relocate(cohort, .after = "sample_id") %>%
+  filter(!is.na(cohort))
+
+write_tsv(wes_wide,"../../data/processed/wes_wide.tsv")
+```
+
 
 ## Human-GEM: metabolic gene annotation
 

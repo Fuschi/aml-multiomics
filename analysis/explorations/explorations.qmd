@@ -6,6 +6,7 @@ editor: source
 
 ```{r, message=FALSE}
 library(tidyverse)
+library(knitr)
 ```
 
 ```{r}
@@ -79,7 +80,7 @@ beat_long |>
   group_by(sample_id) |>
   mutate(rela_metab = abun_metab / sum(abun_metab)) |>
   ungroup() |>
-  ggplot(aes(x = sample_id, y = rela_metab, fill = pathway_class_fct)) +
+  ggplot(aes(x = sample_id, y = abun_metab, fill = pathway_class_fct)) +
   geom_col() +
   theme_minimal() +
   theme(axis.text.x = element_blank(),
@@ -170,3 +171,156 @@ tibble(sample_id = rownames(mat_beat),
        title = "BEAT-AML - UMAP (all genes)") +
   theme_minimal()
 ```
+
+## TCGA
+
+```{r}
+tcga_long <- expr_tcga %>%
+  pivot_longer(-sample_id, names_to = "hugo", values_to = "abun") %>%
+  mutate(abun = log2(abun + 1)) %>%
+  group_by(sample_id) %>%
+  mutate(rela = abun / sum(abun)) %>%
+  ungroup() %>%
+  mutate(hugo = if_else(hugo %in% gem$hugo, hugo, "non_metabolic")) %>%
+  group_by(sample_id, hugo) %>%
+  summarise(abun = sum(abun), rela = sum(rela), .groups = "drop") %>%
+  left_join(gem, by = "hugo") %>%
+  mutate(
+    subsystems     = if_else(hugo == "non_metabolic", "non_metabolic", subsystems),
+    pathway_class = if_else(hugo == "non_metabolic", "non_metabolic", pathway_class))
+```
+
+
+```{r}
+top_pathway_class <- tcga_long |>
+  select(sample_id, pathway_class, abun) |>
+  filter(pathway_class != "non_metabolic") |>
+  group_by(sample_id, pathway_class) |>
+  summarise(abun_metab = sum(abun), .groups = "drop") |>
+  group_by(sample_id) |>
+  mutate(rela_metab = abun_metab / sum(abun_metab)) |>
+  ungroup() |>
+  group_by(pathway_class) |>
+  summarise(total_rela = sum(rela_metab), .groups = "drop") |>
+  arrange(desc(total_rela)) %>%
+  slice_max(total_rela, n = 20) %>%
+  pull(pathway_class)
+```
+
+
+### barplot
+
+```{r, fig.width=15, fig.height=6}
+pathway_order <- c(top_pathway_class, "other_metabolic", "non_metabolic")
+
+tcga_long |>
+  select(sample_id, pathway_class, abun) |>
+  mutate(pathway_class_fct = case_when(
+    is.na(pathway_class)                 ~ NA_character_,
+    pathway_class == "non_metabolic"     ~ "non_metabolic",
+    pathway_class %in% top_pathway_class ~ pathway_class,
+    TRUE                                 ~ "other_metabolic")) %>%
+  mutate(pathway_class_fct = factor(pathway_class_fct, levels = pathway_order)) %>%
+  group_by(sample_id, pathway_class_fct) |>
+  summarise(abun_metab = sum(abun), .groups = "drop") |>
+  group_by(sample_id) |>
+  mutate(rela_metab = abun_metab / sum(abun_metab)) |>
+  ungroup() |>
+  ggplot(aes(x = sample_id, y = rela_metab, fill = pathway_class_fct)) +
+  geom_col() +
+  theme_minimal() +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank()) +
+  labs(x = "Samples", y = "Relative abundance",
+       fill = "Pathway class", title = "tcga-AML metabolic gene expression by pathway") +
+  theme(legend.position = "top") +
+  ggqualpal::scale_fill_qualpal()
+```
+
+```{r, fig.width=15, fig.height=6}
+tcga_long |>
+  select(sample_id, pathway_class, abun) |>
+  filter(pathway_class != "non_metabolic") |>
+  mutate(pathway_class_fct = case_when(
+    is.na(pathway_class)                 ~ NA_character_,
+    pathway_class %in% top_pathway_class ~ pathway_class,
+    TRUE                                 ~ "other_metabolic"
+  )) |>
+  mutate(pathway_class_fct = factor(pathway_class_fct, levels = c(top_pathway_class, "other_metabolic"))) |>
+  group_by(sample_id, pathway_class_fct) |>
+  summarise(abun_metab = sum(abun), .groups = "drop") |>
+  group_by(sample_id) |>
+  mutate(rela_metab = abun_metab / sum(abun_metab)) |>
+  ungroup() |>
+  ggplot(aes(x = sample_id, y = rela_metab, fill = pathway_class_fct)) +
+  geom_col() +
+  theme_minimal() +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        legend.position = "top") +
+  labs(x = "Samples", y = "Relative abundance",
+       fill = "Pathway class",
+       title = "tcga-AML metabolic gene expression by pathway") +
+  ggqualpal::scale_fill_qualpal()
+```
+
+### Dimensionality reduction
+
+#### PCA
+
+```{r}
+mat_tcga <- expr_tcga |>
+  column_to_rownames("sample_id") |>
+  as.matrix()
+
+mat_tcga <- mat_tcga[, intersect(colnames(mat_tcga), gem$hugo)]
+mat_tcga <- mat_tcga[, apply(mat_tcga, 2, var) > 0]
+
+mat_tcga_clr <- mat_tcga |>
+  zCompositions::cmultRepl(method = "CZM", z.warning = 1, z.delete = FALSE) |>
+  vegan::decostand(method = "clr")
+
+pca_tcga <- prcomp(mat_tcga_clr)
+var_exp  <- pca_tcga$sdev^2 / sum(pca_tcga$sdev^2) * 100
+```
+
+```{r, fig.width=9, fig.height=9, warning=FALSE, message=FALSE}
+library(factoextra)
+
+fviz_pca_biplot(pca_tcga,
+                geom.ind  = "point",
+                col.ind   = meta_tcga$Disease_Type,
+                select.var = list(contrib = 20),
+                repel     = TRUE,
+                legend.title = "Disease type") +
+  labs(x = paste0("PC1 (", round(var_exp[1], 1), "%)"),
+       y = paste0("PC2 (", round(var_exp[2], 1), "%)"),
+       title = "tcga-AML - Biplot (metabolic genes, CLR)") +
+  theme_minimal()
+```
+
+#### UMAP
+
+```{r}
+library(uwot)
+
+set.seed(42)
+umap_tcga <- umap(mat_tcga_clr, n_neighbors = 15, min_dist = 0.1)
+
+tibble(sample_id = rownames(mat_tcga),
+       UMAP1     = umap_tcga[, 1],
+       UMAP2     = umap_tcga[, 2]) |>
+  left_join(meta_tcga, by = "sample_id") |>
+  ggplot(aes(x = UMAP1, y = UMAP2, color = Disease_Type)) +
+  geom_point(alpha = 0.7, size = 2) +
+  labs(color = "Disease type",
+       title = "tcga-AML - UMAP (all genes)") +
+  theme_minimal()
+```
+
+
+
+
+
+
+
