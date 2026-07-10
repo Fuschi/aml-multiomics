@@ -1,164 +1,304 @@
 ---
-title: "explorations 2"
-format: html
+title: "Exploratory Analysis of Metabolic Gene Expression in AML"
+subtitle: "Cross-cohort comparison of BEAT-AML and TCGA-LAML"
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    number-sections: true
+    code-fold: true
+    code-tools: true
+    theme: cosmo
 editor: source
+execute:
+  warning: false
+  message: false
 ---
 
-## Setup
+# Introduction
 
-```{r, message=FALSE}
-library(tidyverse)
-library(skimr)
-library(knitr)
-library(factoextra)
-library(limma)
-```
+This notebook presents a step-by-step exploratory analysis of metabolic gene expression in acute myeloid leukemia (AML), comparing two independent cohorts: BEAT-AML and TCGA-LAML.
 
-## Data
+The analysis focuses on genes annotated in the Human-GEM metabolic model. The main aim is to characterize metabolic expression patterns, evaluate the overlap between cohorts, and prepare the data for downstream multivariate and pathway-level analyses.
 
-We load pre-processed expression matrices for BEAT-AML (217 samples, 22,000+ genes,
-log2 TMM-CPM normalized, Hugo symbols) and TCGA-LAML (140 samples, 30,000+ genes,
-linear TMM-CPM normalized, Hugo symbols), restricted to samples with matched WES information.
-Gene-level metabolic annotation from Human-GEM restricts downstream analyses to
-~2,200 metabolic genes linked to known reactions and subsystems.
+# Setup
 
 ```{r}
-Sys.setenv("VROOM_CONNECTION_SIZE" = 131072 * 100)
-expr_beat <- read_tsv("../../data/processed/beat_aml_expression.tsv.xz",
-                     show_col_types = FALSE) %>%
-  select(sample_id, where(~ is.numeric(.x) && sum(.x) > 0))
+#| label: setup
+#| include: false
 
-meta_beat <- read_tsv("../../data/processed/beat_aml_metadata.tsv",
-                     show_col_types = FALSE) %>%
+library(tidyverse)
+
+Sys.setenv("VROOM_CONNECTION_SIZE" = 131072 * 100)
+```
+
+# Data loading
+
+We load pre-processed expression matrices for BEAT-AML and TCGA-LAML, restricted to samples with matched whole-exome sequencing information.
+
+The BEAT-AML expression matrix contains log2 TMM-CPM normalized values, while the TCGA-LAML expression matrix contains linear TMM-CPM normalized values. Both datasets use HUGO gene symbols.
+
+Gene-level metabolic annotation from Human-GEM is used to restrict downstream analyses to genes linked to known metabolic reactions and subsystems.
+
+```{r}
+#| label: load-data
+#| include: false
+
+expr_beat_wes <- read_tsv(
+  "../../data/processed/beat_wes_expression.tsv.xz",
+  show_col_types = FALSE) %>%
+  select(sample_id, where(~ is.numeric(.x) && sum(.x, na.rm = TRUE) > 0))
+
+meta_beat_wes <- read_tsv(
+  "../../data/processed/beat_wes_metadata.tsv",
+  show_col_types = FALSE) %>%
   mutate(cohort = "BEAT", .after = 1)
 
-expr_tcga <- read_tsv("../../data/processed/tcga_aml_expression.tsv.xz",
-                     show_col_types = FALSE) %>%
-  select(sample_id, where(~ is.numeric(.x) && sum(.x) > 0))
+expr_tcga_wes <- read_tsv(
+  "../../data/processed/tcga_wes_expression.tsv.xz",
+  show_col_types = FALSE) %>%
+  select(sample_id, where(~ is.numeric(.x) && sum(.x, na.rm = TRUE) > 0))
 
-meta_tcga <- read_tsv("../../data/processed/tcga_aml_metadata.tsv",
-                     show_col_types = FALSE)
+meta_tcga_wes <- read_tsv(
+  "../../data/processed/tcga_wes_metadata.tsv",
+  show_col_types = FALSE)
 
-gem <- read_tsv("../../data/processed/human_gem_gene_subsystem_summary.tsv",
-                show_col_types = FALSE)
+gem <- read_tsv(
+  "../../data/processed/human_gem_gene_subsystem_summary.tsv",
+  show_col_types = FALSE)
 ```
 
-```{r}
-tribble(
-  ~dataset,    ~sample,          ~genes,          ~sparsity,
-  "expr_beat", nrow(expr_beat),  ncol(expr_beat), mean(expr_beat[,-1] == 0),
-  "expr_tcga", nrow(expr_tcga),  ncol(expr_tcga), mean(expr_tcga[,-1] == 0),
-  "gem",       NA,               nrow(gem),        NA
-) |>
-  mutate(sparsity = scales::percent(sparsity, accuracy = 0.1)) |>
-  knitr::kable() |>
-  kableExtra::kable_styling(
-    bootstrap_options = c("condensed", "bordered"),
-    full_width        = FALSE,
-    font_size         = 16)
-```
+# Dataset overview
+
+Before focusing on metabolic genes, we summarize the overlap between the BEAT-AML and TCGA-LAML expression matrices. We report the number of matched RNA-WES samples, shared and cohort-specific genes, and the fraction of expression signal and zero values associated with each gene set.
 
 ```{r}
-# Gene sets by metabolic annotation and cohort overlap
-metab_genes_beat <- intersect(colnames(expr_beat)[-1], gem$hugo)
-metab_genes_tcga <- intersect(colnames(expr_tcga)[-1], gem$hugo)
-shared_metab     <- intersect(metab_genes_beat, metab_genes_tcga)
-only_beat        <- setdiff(metab_genes_beat, metab_genes_tcga)
-only_tcga        <- setdiff(metab_genes_tcga, metab_genes_beat)
-non_metab_beat   <- setdiff(colnames(expr_beat)[-1], gem$hugo)
-non_metab_tcga   <- setdiff(colnames(expr_tcga)[-1], gem$hugo)
+#| label: gene-and-sample-overlap-summary
+#| code-fold: true
+#| code-summary: "Show code"
 
-# Total abundance per cohort for relative contribution
-total_beat <- sum(expr_beat[-1])
-total_tcga <- sum(expr_tcga[-1])
-
-tribble(
-  ~category,             ~n_genes_beat,          ~n_genes_tcga,          ~abun_pct_beat,                                    ~abun_pct_tcga,
-  "Shared metabolic",    length(shared_metab),   length(shared_metab),   sum(expr_beat[shared_metab]) / total_beat * 100,   sum(expr_tcga[shared_metab]) / total_tcga * 100,
-  "Only BEAT metabolic", length(only_beat),      NA,                     sum(expr_beat[only_beat])    / total_beat * 100,   NA,
-  "Only TCGA metabolic", NA,                     length(only_tcga),      NA,                                                sum(expr_tcga[only_tcga])    / total_tcga * 100,
-  "Non-metabolic",       length(non_metab_beat), length(non_metab_tcga), sum(expr_beat[non_metab_beat])/ total_beat * 100,  sum(expr_tcga[non_metab_tcga])/ total_tcga * 100
-) |>
-  mutate(across(starts_with("abun"), ~ round(.x, 2))) |>
-  knitr::kable(
-    col.names = c(
-      "Category",
-      "Genes BEAT", "Genes TCGA",
-      "% abundance BEAT", "% abundance TCGA"
+local({
+  
+  inter <- intersect(colnames(expr_beat_wes)[-1], colnames(expr_tcga_wes)[-1])
+  
+  only_beat <- setdiff(colnames(expr_beat_wes)[-1], colnames(expr_tcga_wes)[-1])
+  only_tcga <- setdiff(colnames(expr_tcga_wes)[-1], colnames(expr_beat_wes)[-1])
+  
+  tibble(
+    cohort = c("BEAT-AML", "TCGA-LAML"),
+    
+    matched_rna_wes_samples = c(
+      n_distinct(expr_beat_wes$sample_id),
+      n_distinct(expr_tcga_wes$sample_id)
     ),
-    caption = "2,600 metabolic genes are shared between cohorts and used for downstream
-    analysis. 224 genes are metabolic but exclusive to BEAT-AML, contributing only
-    ~0.02% of total abundance - are these negligible? No metabolic genes are
-    exclusive to TCGA. Non-metabolic genes dominate both cohorts by abundance
-    (84% in BEAT-AML, 76% in TCGA-LAML), which is expected as Human-GEM covers
-    only a subset of the transcriptome."
-  ) %>%
-  kableExtra::kable_styling(
-    bootstrap_options = c("condensed", "bordered"),
-    full_width        = FALSE,
-    font_size         = 16)
+    
+    total_genes = c(
+      ncol(expr_beat_wes) - 1,
+      ncol(expr_tcga_wes) - 1
+    ),
+    
+    shared_genes = length(inter),
+    
+    cohort_specific_genes = c(
+      length(only_beat),
+      length(only_tcga)
+    ),
+    
+    zero_fraction_in_shared_genes = c(
+      mean(as.matrix(expr_beat_wes[, inter, drop = FALSE]) == 0, na.rm = TRUE),
+      mean(as.matrix(expr_tcga_wes[, inter, drop = FALSE]) == 0, na.rm = TRUE)
+    ),
+    
+    shared_expression_fraction = c(
+      sum(as.matrix(expr_beat_wes[, inter, drop = FALSE]), na.rm = TRUE) /
+        sum(as.matrix(expr_beat_wes[, -1, drop = FALSE]), na.rm = TRUE),
+      
+      sum(as.matrix(expr_tcga_wes[, inter, drop = FALSE]), na.rm = TRUE) /
+        sum(as.matrix(expr_tcga_wes[, -1, drop = FALSE]), na.rm = TRUE)
+    ),
+    
+    zero_fraction_in_cohort_specific_genes = c(
+      if (length(only_beat) == 0) {
+        NA_real_
+      } else {
+        mean(as.matrix(expr_beat_wes[, only_beat, drop = FALSE]) == 0, na.rm = TRUE)
+      },
+      
+      if (length(only_tcga) == 0) {
+        NA_real_
+      } else {
+        mean(as.matrix(expr_tcga_wes[, only_tcga, drop = FALSE]) == 0, na.rm = TRUE)
+      }
+    )
+  ) |>
+    mutate(
+      zero_fraction_in_shared_genes = scales::percent(
+        zero_fraction_in_shared_genes,
+        accuracy = 0.01
+      ),
+      shared_expression_fraction = scales::percent(
+        shared_expression_fraction,
+        accuracy = 0.01
+      ),
+      zero_fraction_in_cohort_specific_genes = scales::percent(
+        zero_fraction_in_cohort_specific_genes,
+        accuracy = 0.01
+      )
+    ) |>
+    knitr::kable(
+      col.names = c(
+        "Cohort",
+        "Matched RNA-WES samples",
+        "Total genes",
+        "Shared genes",
+        "Cohort-specific genes",
+        "Zero values in shared genes (%)",
+        "Total expression signal in shared genes (%)",
+        "Zero values in cohort-specific genes (%)"
+      ),
+      align = c("l", rep("c", 7))
+    )
+})
 ```
 
-```{r, fig.width=12, fig.height=2.5}
-expr_only_beat <- expr_beat[, c("sample_id",
-                                setdiff(colnames(expr_beat), colnames(expr_tcga)))] 
-expr_shared_beat <- expr_beat[, c("sample_id",
-                                intersect(colnames(expr_beat), colnames(expr_tcga)))] 
+A total of 22,657 genes are shared between BEAT-AML and TCGA-LAML. These genes account for more than 99% of the total expression signal in both cohorts and are therefore suitable for downstream comparative analyses.
 
-ggpubr::ggarrange(
-  
-(colSums(expr_only_beat[, -1] > 0) / nrow(expr_only_beat)) %>%
-  enframe(name = "hugo", value = "prevalence") %>%
-  ggplot(aes(x = prevalence)) +
-  geom_histogram(fill = "lightblue", color = "darkblue", bins = 30) + 
-  theme_bw() + ggtitle("exclusive genes in beat"),
+BEAT-AML contains more than 10,000 additional cohort-specific genes. However, these genes contribute only about 0.8% of the total expression signal and show a high fraction of zero values, around 77%.
 
-(colSums(expr_shared_beat[, -1] > 0) / nrow(expr_shared_beat)) %>%
-  enframe(name = "hugo", value = "prevalence") %>%
-  ggplot(aes(x = prevalence)) +
-  geom_histogram(fill = "lightblue", color = "darkblue", bins = 30) + 
-  theme_bw() + ggtitle("shared genes in beat"))
-```
+# Metabolic gene overview
+
+We now focus on genes annotated as metabolic in Human-GEM. Metabolic genes are divided into shared genes, present in both BEAT-AML and TCGA-LAML, and cohort-specific genes.
 
 ```{r}
-rm(metab_genes_beat, metab_genes_tcga, shared_metab,
-   only_beat, only_tcga, non_metab_beat, non_metab_tcga,
-   total_beat, total_tcga, expr_only_beat, expr_shared_beat)
+#| label: metabolic-zoom-overview
+#| code-fold: true
+#| code-summary: "Show code"
+
+local({
+  
+  metab_shared <- Reduce(
+    intersect,
+    list(
+      colnames(expr_beat_wes)[-1],
+      colnames(expr_tcga_wes)[-1],
+      gem$hugo
+    )
+  )
+  
+  metab_beat_only <- intersect(colnames(expr_beat_wes)[-1], gem$hugo) |>
+    setdiff(metab_shared)
+  
+  metab_tcga_only <- intersect(colnames(expr_tcga_wes)[-1], gem$hugo) |>
+    setdiff(metab_shared)
+  
+  tibble(
+    cohort = c("BEAT-AML", "TCGA-LAML"),
+    
+    metabolic_genes = c(
+      length(c(metab_shared, metab_beat_only)),
+      length(c(metab_shared, metab_tcga_only))
+    ),
+    
+    shared_metabolic_genes = length(metab_shared),
+    
+    cohort_specific_metabolic_genes = c(
+      length(metab_beat_only),
+      length(metab_tcga_only)
+    ),
+    
+    expression_in_shared_metabolic_genes = c(
+      sum(as.matrix(expr_beat_wes[, metab_shared, drop = FALSE]), na.rm = TRUE) /
+        sum(as.matrix(expr_beat_wes[, -1, drop = FALSE]), na.rm = TRUE),
+      
+      sum(as.matrix(expr_tcga_wes[, metab_shared, drop = FALSE]), na.rm = TRUE) /
+        sum(as.matrix(expr_tcga_wes[, -1, drop = FALSE]), na.rm = TRUE)
+    ),
+    
+    expression_in_cohort_specific_metabolic_genes = c(
+      if (length(metab_beat_only) == 0) {
+        NA_real_
+      } else {
+        sum(as.matrix(expr_beat_wes[, metab_beat_only, drop = FALSE]), na.rm = TRUE) /
+          sum(as.matrix(expr_beat_wes[, -1, drop = FALSE]), na.rm = TRUE)
+      },
+      
+      if (length(metab_tcga_only) == 0) {
+        NA_real_
+      } else {
+        sum(as.matrix(expr_tcga_wes[, metab_tcga_only, drop = FALSE]), na.rm = TRUE) /
+          sum(as.matrix(expr_tcga_wes[, -1, drop = FALSE]), na.rm = TRUE)
+      }
+    )
+  ) |>
+    mutate(
+      expression_in_shared_metabolic_genes = scales::percent(
+        expression_in_shared_metabolic_genes,
+        accuracy = 0.01
+      ),
+      expression_in_cohort_specific_metabolic_genes = scales::percent(
+        expression_in_cohort_specific_metabolic_genes,
+        accuracy = 0.01
+      )
+    ) |>
+    knitr::kable(
+      col.names = c(
+        "Cohort",
+        "Metabolic genes",
+        "Shared metabolic genes",
+        "Cohort-specific metabolic genes",
+        "Total expression signal in shared metabolic genes (%)",
+        "Total expression signal in cohort-specific metabolic genes (%)"
+      ),
+      align = c("l", rep("c", 5))
+    )
+})
 ```
 
-## Create Long Format tibble
+Most metabolic genes are shared between BEAT-AML and TCGA-LAML. Cohort-specific metabolic genes account for only a small fraction of the total expression signal, supporting the use of shared metabolic genes for downstream comparative analyses.
+
+# Create long-format expression table
+
+As a starting point, we retain only genes shared between BEAT-AML and TCGA-LAML. These shared genes account for more than 99% of the total expression signal in both cohorts and provide a common feature for downstream analyses.
 
 ```{r}
-long_aml <- bind_rows(
-  # beat
-  expr_beat %>%
-    pivot_longer(-sample_id, names_to = "hugo", values_to = "log2_tmm_cpm") %>%
-    mutate(tmm_cpm = 2^log2_tmm_cpm - 1, .before = "log2_tmm_cpm") %>%
-    ungroup() %>%
-    left_join(gem, by = "hugo") %>%
-    left_join(
-      select(meta_beat, cohort, sample_id, Patient_Id, Gender, Disease_Type),
-      by = "sample_id"),
-  
-  # tcga
-  expr_tcga %>%
-    pivot_longer(-sample_id, names_to = "hugo", values_to = "tmm_cpm") %>%
-    mutate(log2_tmm_cpm = log2(tmm_cpm + 1)) %>%
-    left_join(gem, by = "hugo") %>%
-    left_join(meta_tcga, by = "sample_id")) %>%
-  
-  # more
-  mutate(
-    hugo_fct = if_else(hugo %in% gem$hugo, hugo, "non_metabolic"),
-    subsystems     = if_else(hugo_fct == "non_metabolic", "non_metabolic", subsystems),
-    pathway_class = if_else(hugo_fct == "non_metabolic", "non_metabolic", pathway_class)) %>%
-  relocate(hugo_fct, .after = "hugo") 
+#| label: create-long-aml-table
+#| code-fold: true
+#| code-summary: "Show code"
 
-glimpse(long_aml)
+long_shared_aml <- local({
+  
+  shared_all_genes <- intersect(colnames(expr_beat_wes)[-1], colnames(expr_tcga_wes)[-1])
+  
+  bind_rows(
+    expr_beat_wes |>
+      select(sample_id, all_of(shared_all_genes)) |>
+      pivot_longer(-sample_id, names_to = "hugo", values_to = "log2_tmm_cpm") |>
+      mutate(tmm_cpm = 2^log2_tmm_cpm - 1, .before = "log2_tmm_cpm") |>
+      left_join(gem, by = "hugo") |>
+      left_join(select(meta_beat_wes, cohort, sample_id, Patient_Id, Gender, Disease_Type), by = "sample_id"),
+    
+    expr_tcga_wes |>
+      select(sample_id, all_of(shared_all_genes)) |>
+      pivot_longer(-sample_id, names_to = "hugo", values_to = "tmm_cpm") |>
+      mutate(log2_tmm_cpm = log2(tmm_cpm + 1)) |>
+      left_join(gem, by = "hugo") |>
+      left_join(meta_tcga_wes, by = "sample_id")
+  ) |>
+    mutate(
+      hugo_fct = if_else(hugo %in% gem$hugo, hugo, "non_metabolic"),
+      subsystems = if_else(hugo_fct == "non_metabolic", "non_metabolic", subsystems),
+      pathway_class = if_else(hugo_fct == "non_metabolic", "non_metabolic", pathway_class)
+    ) |>
+    relocate(hugo_fct, .after = "hugo")
+})
+
+glimpse(long_shared_aml)
 ```
+
+We then inspect the total expression signal per sample to identify possible outliers before moving to pathway-level summaries.
 
 ```{r, fig.width=6, fig.height=2.5}
-sample_depth <- long_aml %>%
+sample_depth <- long_shared_aml %>%
   group_by(cohort, sample_id) %>%
   summarise(sample_tmm_cpm = sum(tmm_cpm),
             sample_log2_tmm_cpm = sum(log2_tmm_cpm),
@@ -172,51 +312,71 @@ sample_depth %>%
 
 sample_depth %>%
   ggplot(aes(x = sample_log2_tmm_cpm, fill = cohort)) +
-  geom_histogram(color = "lightgray", bins = 30) +
+  geom_histogram(color = "lightgray", bins = 20) +
   theme_bw() +
-  facet_wrap(~cohort, ncol = 2)
+  facet_wrap(~cohort, ncol = 2, scales = "free")
+
+rm(sample_depth)
 ```
 
 ```{r}
-long_aml <- long_aml %>%
+long_shared_aml <- long_shared_aml %>%
+  filter(sample_id != "15-00300")
+
+meta_beat_wes <- meta_beat_wes %>%
+  filter(sample_id != "15-00300")
+
+expr_beat_wes <- expr_beat_wes %>%
   filter(sample_id != "15-00300")
 ```
 
+Sample `15-00300` is removed because it shows an unusually low expression signal compared with the remaining BEAT-AML samples.
+
 ```{r}
-long_aml %>%
+long_shared_aml %>%
   group_by(cohort) %>%
-  skim(log2_tmm_cpm)
+  skimr::skim(log2_tmm_cpm)
 ```
 
-## Pathway Profiles
+# Select main pathway classes
+
+To simplify pathway-level visualization, we retain the most represented pathway classes and group the remaining metabolic pathways as `other_metabolic`.
 
 ```{r}
-top_pathway_class <- long_aml |>
-  select(sample_id, pathway_class, log2_tmm_cpm) |>
+#| label: select-main-pathway-classes
+#| code-fold: true
+#| code-summary: "Show code"
+
+top_pathway_class <- long_shared_aml |>
   filter(pathway_class != "non_metabolic") |>
   group_by(sample_id, pathway_class) |>
   summarise(abun_metab = sum(log2_tmm_cpm), .groups = "drop") |>
   group_by(sample_id) |>
   mutate(rela_metab = abun_metab / sum(abun_metab)) |>
   ungroup() |>
-  group_by(pathway_class) |>
-  summarise(total_rela = sum(rela_metab), .groups = "drop") |>
-  arrange(desc(total_rela)) %>%
-  slice_max(total_rela, n = 20) %>%
-  pull(pathway_class) 
-pathway_order <- c(top_pathway_class, "other_metabolic", "non_metabolic")
+  summarise(total_rela = sum(rela_metab), .by = pathway_class) |>
+  slice_max(total_rela, n = 20) |>
+  pull(pathway_class)
 
-long_aml <- long_aml %>%
-  mutate(pathway_class_fct = case_when(
-    is.na(pathway_class)                 ~ NA_character_,
-    pathway_class == "non_metabolic"     ~ "non_metabolic",
-    pathway_class %in% top_pathway_class ~ pathway_class,
-    TRUE                                 ~ "other_metabolic")) %>%
-  mutate(pathway_class_fct = factor(pathway_class_fct, levels = pathway_order)) %>%
-  relocate(.after = "pathway_class")
+long_shared_aml <- long_shared_aml |>
+  mutate(
+    pathway_class_fct = case_when(
+      is.na(pathway_class) ~ NA_character_,
+      pathway_class == "non_metabolic" ~ "non_metabolic",
+      pathway_class %in% top_pathway_class ~ pathway_class,
+      TRUE ~ "other_metabolic"
+    ),
+    pathway_class_fct = factor(
+      pathway_class_fct,
+      levels = c(top_pathway_class, "other_metabolic", "non_metabolic")
+    )
+  ) |>
+  relocate(pathway_class_fct, .after = pathway_class)
 
-rm(top_pathway_class, pathway_order)
+rm(top_pathway_class)
 ```
+
+The resulting `pathway_class_fct` variable is used only for visualization. It preserves the main metabolic pathway classes and groups less represented ones into `other_metabolic`.
 
 ```{r}
 #| code-fold: true
@@ -240,7 +400,7 @@ plot_stacked_bar <- function(data,
       group_by(cohort, sample_id) |>
       mutate(y_var = log2_tmm_cpm / sum(log2_tmm_cpm)) |>
       ungroup()
-    y_label <- "Relative abundance"
+    y_label <- "Relative pathway signal"
   } else {
     data <- data |> mutate(y_var = log2_tmm_cpm)
     y_label <- "log2(TMM-CPM+1)"
@@ -250,95 +410,165 @@ plot_stacked_bar <- function(data,
     ggplot(aes(x = sample_id, y = y_var, fill = pathway_class_fct)) +
     geom_col() +
     theme_minimal() +
-    theme(axis.text.x     = element_blank(),
-          axis.ticks.x    = element_blank(),
-          legend.position = "top") +
-    labs(x     = "Samples",
-         y     = y_label,
-         fill  = "Pathway class",
-         title = title) +
+    theme(
+      axis.text.x     = element_blank(),
+      axis.ticks.x    = element_blank(),
+      legend.position = "top"
+    ) +
+    labs(
+      x     = "Samples",
+      y     = y_label,
+      fill  = "Pathway class",
+      title = title
+    ) +
     facet_wrap(~cohort, nrow = 2, scales = "free") +
     ggqualpal::scale_fill_qualpal()
 }
 ```
 
+# Pathway profile visualization
+
+The following plots compare pathway-level profiles across samples. Absolute plots show the summed expression signal, while relative plots show the proportion of each pathway class within each sample.
+
 ::: {.panel-tabset}
 
-## Absolute — all genes
+## Absolute — all shared genes
 
 ```{r, fig.width=14, fig.height=8}
-long_aml |> select(cohort, sample_id, pathway_class_fct, log2_tmm_cpm) |>
+long_shared_aml |> 
+  select(cohort, sample_id, pathway_class_fct, log2_tmm_cpm) |>
   plot_stacked_bar(include_non_metabolic = TRUE, relative = FALSE)
 ```
 
 ## Absolute — metabolic only
 
 ```{r, fig.width=14, fig.height=8}
-long_aml |> select(cohort, sample_id, pathway_class_fct, log2_tmm_cpm) |>
+long_shared_aml |> 
+  select(cohort, sample_id, pathway_class_fct, log2_tmm_cpm) |>
   plot_stacked_bar(include_non_metabolic = FALSE, relative = FALSE)
 ```
 
-## Relative — all genes
+## Relative — all shared genes
 
 ```{r, fig.width=14, fig.height=8}
-long_aml |> select(cohort, sample_id, pathway_class_fct, log2_tmm_cpm) |>
+long_shared_aml |> 
+  select(cohort, sample_id, pathway_class_fct, log2_tmm_cpm) |>
   plot_stacked_bar(relative = TRUE)
 ```
 
 ## Relative — metabolic only
 
 ```{r, fig.width=14, fig.height=8}
-long_aml |> select(cohort, sample_id, pathway_class_fct, log2_tmm_cpm) |>
+long_shared_aml |> 
+  select(cohort, sample_id, pathway_class_fct, log2_tmm_cpm) |>
   plot_stacked_bar(include_non_metabolic = FALSE, relative = TRUE)
 ```
 
 :::
 
-## Metabolic Selection and batch effects
+The relative metabolic-only profiles are the most useful view for comparing pathway composition across samples, since they remove the dominant contribution of non-metabolic genes.
 
-i will consider only metabolic pathways from now on
+Overall, pathway profiles appear very stable across samples and across both cohorts. No major differences are evident in either the absolute pathway signal or the relative pathway composition.
 
 ```{r}
-long_aml_metab <- long_aml %>%
+rm(plot_stacked_bar)
+```
+
+
+# Metabolic matrix construction and batch correction
+
+From this point onward, we restrict the analysis to metabolic genes only and build the matrices used for dimensionality reduction and following analysis in wide format.
+
+```{r}
+#| label: metabolic-selection-and-matrices
+#| code-fold: true
+#| code-summary: "Show code"
+
+long_aml_metab <- long_shared_aml |>
   filter(hugo_fct != "non_metabolic")
+
+wide_metab <- local({
+  
+  wide_all <- long_aml_metab |>
+    group_by(hugo) |>
+    filter(n_distinct(cohort) == 2) |>
+    ungroup() |>
+    select(sample_id, cohort, Disease_Type, Gender, hugo_fct, log2_tmm_cpm) |>
+    pivot_wider(names_from = hugo_fct, values_from = log2_tmm_cpm)
+  
+  meta_beat <- meta_beat_wes |>
+    filter(sample_id %in% wide_all$sample_id) |>
+    arrange(sample_id)
+  
+  meta_tcga <- meta_tcga_wes |>
+    filter(sample_id %in% wide_all$sample_id) |>
+    arrange(sample_id)
+  
+  wide_beat <- wide_all |>
+    filter(cohort == "BEAT") |>
+    arrange(sample_id)
+  
+  wide_tcga <- wide_all |>
+    filter(cohort == "TCGA") |>
+    arrange(sample_id)
+  
+  wide_all <- bind_rows(wide_beat, wide_tcga)
+  
+  meta_aml <- wide_all |>
+    select(sample_id, cohort, Disease_Type, Gender)
+  
+  metab_genes <- setdiff(colnames(wide_all), colnames(meta_aml))
+  
+  mat_aml <- wide_all |>
+    select(sample_id, all_of(metab_genes)) |>
+    column_to_rownames("sample_id") |>
+    as.matrix()
+  
+  mat_beat <- wide_beat |>
+    select(sample_id, all_of(metab_genes)) |>
+    column_to_rownames("sample_id") |>
+    as.matrix()
+  
+  mat_tcga <- wide_tcga |>
+    select(sample_id, all_of(metab_genes)) |>
+    column_to_rownames("sample_id") |>
+    as.matrix()
+  
+  stopifnot(identical(rownames(mat_beat), meta_beat$sample_id))
+  stopifnot(identical(rownames(mat_tcga), meta_tcga$sample_id))
+  stopifnot(identical(rownames(mat_aml), meta_aml$sample_id))
+  
+  list(
+    wide_all = wide_all,
+    meta_aml = meta_aml,
+    meta_beat = meta_beat,
+    meta_tcga = meta_tcga,
+    mat_aml = mat_aml,
+    mat_beat = mat_beat,
+    mat_tcga = mat_tcga
+  )
+})
+
+wide_metab$mat_corrected <- t(limma::removeBatchEffect(
+  t(wide_metab$mat_aml),
+  batch  = wide_metab$meta_aml$cohort,
+  design = model.matrix(~ Disease_Type + Gender, data = wide_metab$meta_aml)
+))
 ```
 
-```{r}
-wide_aml_metab <- long_aml_metab %>%
-  group_by(hugo) %>%
-  filter(n_distinct(cohort) == 2) %>%     
-  ungroup() %>%
-  select(sample_id, cohort, hugo_fct, Disease_Type, Gender, log2_tmm_cpm) %>%
-  pivot_wider(names_from = hugo_fct, values_from = log2_tmm_cpm)
+The combined matrix is used to inspect cohort-level structure before and after batch correction. Batch correction is used here only as an exploratory step to evaluate whether the dominant separation between BEAT-AML and TCGA-LAML is mainly driven by cohort-specific effects.
 
-mat_aml <- wide_aml_metab %>%
-  select(sample_id, DPM1:last_col()) %>%
-  column_to_rownames("sample_id") %>% as.matrix()
+# Dimensionality reduction
 
-mat_beat <- wide_aml_metab %>%
-  filter(cohort == "BEAT") %>%
-  select(sample_id, DPM1:last_col()) %>%
-  column_to_rownames("sample_id") %>% as.matrix()
+## PCA
 
-mat_tcga <- wide_aml_metab %>%
-  filter(cohort == "TCGA") %>%
-  select(sample_id, DPM1:last_col()) %>%
-  column_to_rownames("sample_id") %>% as.matrix()
-
-meta_aml <- wide_aml_metab %>%
-  select(sample_id:Gender)
-
-mat_corrected <- t(limma::removeBatchEffect(
-  t(mat_aml),
-  batch  = meta_aml$cohort,
-  design = model.matrix(~ Disease_Type + Gender, data = meta_aml)))
-```
-
-## Dimensionality Reduction
-
-### PCA
+We first use PCA to visualize the main axes of variation in metabolic gene expression.
 
 ```{r}
+#| label: pca-plot-function
+#| code-fold: true
+#| code-summary: "Show PCA plot function"
+
 pca_plot <- function(pca_obj, color_vec, title, palette = NULL) {
   
   n_levels <- length(unique(color_vec))
@@ -347,11 +577,11 @@ pca_plot <- function(pca_obj, color_vec, title, palette = NULL) {
     palette <- ggpubr::get_palette("jco", n_levels)
   }
   
-  fviz_pca_biplot(
+  factoextra::fviz_pca_biplot(
     pca_obj,
     geom.ind     = "point",
     col.ind      = color_vec,
-    addEllipses  = n_levels > 1,   # no ellipse with a single group
+    addEllipses  = n_levels > 1,
     ellipse.type = "norm",
     geom.var     = c("arrow", "text"),
     col.var      = "darkgray",
@@ -360,59 +590,107 @@ pca_plot <- function(pca_obj, color_vec, title, palette = NULL) {
     palette      = palette,
     legend.title = "",
     title        = title
-  ) + theme_bw() + coord_equal()
+  ) +
+    theme_bw() +
+    coord_equal()
 }
 ```
 
 ```{r}
+#| label: run-pca
+#| code-fold: true
+#| code-summary: "Show code"
+
 res_pca <- list(
-  combined  = prcomp(mat_aml,       center = TRUE, scale. = FALSE),
-  corrected = prcomp(mat_corrected, center = TRUE, scale. = FALSE),
-  beat      = prcomp(mat_beat,      center = TRUE, scale. = FALSE),
-  tcga      = prcomp(mat_tcga,      center = TRUE, scale. = FALSE))
+  combined  = prcomp(wide_metab$mat_aml,       center = TRUE, scale. = FALSE),
+  corrected = prcomp(wide_metab$mat_corrected, center = TRUE, scale. = FALSE),
+  beat      = prcomp(wide_metab$mat_beat,      center = TRUE, scale. = FALSE),
+  tcga      = prcomp(wide_metab$mat_tcga,      center = TRUE, scale. = FALSE)
+)
 ```
 
 ::: {.panel-tabset}
 
 ## Combined
 
-```{r, fig.width=10, fig.height=7, message=FALSE}
-pca_plot(res_pca$combined,
-         color_vec = meta_aml$cohort,
-         title     = "PCA — combined cohorts (no correction)",
-         palette   = c("#E64B35", "#4DBBD5"))
+```{r}
+#| label: pca-combined
+#| fig-width: 10
+#| fig-height: 7
+#| message: false
+#| code-fold: true
+#| code-summary: "Show code"
+
+pca_plot(
+  res_pca$combined,
+  color_vec = wide_metab$meta_aml$cohort,
+  title     = "PCA — combined cohorts (no correction)",
+  palette   = c("#E64B35", "#4DBBD5")
+)
 ```
 
 ## Batch corrected
 
-```{r, fig.width=10, fig.height=7, message=FALSE}
-pca_plot(res_pca$corrected,
-         color_vec = meta_aml$cohort,
-         title     = "PCA — combined cohorts (batch corrected)",
-         palette   = c("#E64B35", "#4DBBD5"))
+```{r}
+#| label: pca-batch-corrected
+#| fig-width: 10
+#| fig-height: 7
+#| message: false
+#| code-fold: true
+#| code-summary: "Show code"
+
+pca_plot(
+  res_pca$corrected,
+  color_vec = wide_metab$meta_aml$cohort,
+  title     = "PCA — combined cohorts (batch corrected)",
+  palette   = c("#E64B35", "#4DBBD5")
+)
 ```
 
-## BEAT
+## BEAT-AML
 
-```{r, fig.width=10, fig.height=7, message=FALSE}
-pca_plot(res_pca$beat,
-         color_vec = meta_beat$Disease_Type,
-         title     = "PCA — BEAT-AML")
+```{r}
+#| label: pca-beat
+#| fig-width: 10
+#| fig-height: 7
+#| message: false
+#| code-fold: true
+#| code-summary: "Show code"
+
+pca_plot(
+  res_pca$beat,
+  color_vec = wide_metab$meta_beat$Disease_Type,
+  title     = "PCA — BEAT-AML"
+)
 ```
 
-## TCGA
+## TCGA-LAML
 
-```{r, fig.width=10, fig.height=7, message=FALSE}
-pca_plot(res_pca$tcga,
-         color_vec = meta_tcga$Disease_Type,
-         title     = "PCA — TCGA-LAML")
+```{r}
+#| label: pca-tcga
+#| fig-width: 10
+#| fig-height: 7
+#| message: false
+#| code-fold: true
+#| code-summary: "Show code"
+
+pca_plot(
+  res_pca$tcga,
+  color_vec = wide_metab$meta_tcga$Disease_Type,
+  title     = "PCA — TCGA-LAML"
+)
 ```
 
 :::
 
-### UMAP
+The uncorrected combined PCA is used to assess whether the two cohorts separate before correction. The batch-corrected PCA provides a comparison after removing cohort-associated effects. The cohort-specific PCA plots are then used to inspect the internal structure of BEAT-AML and TCGA-LAML separately.
 
-### UMAP
+```{r}
+rm(pca_plot)
+```
+
+
+## UMAP
 
 ```{r}
 library(uwot)
@@ -448,10 +726,10 @@ umap_plot <- function(umap_mat, color_vec, title, palette = NULL) {
 ```{r}
 set.seed(42)
 res_umap <- list(
-  combined  = uwot::umap(mat_aml, n_neighbors = 15, min_dist = 0.1),
-  corrected = uwot::umap(mat_corrected, n_neighbors = 15, min_dist = 0.1),
-  beat      = uwot::umap(mat_beat, n_neighbors = 15, min_dist = 0.1),
-  tcga      = uwot::umap(mat_tcga,n_neighbors = 15, min_dist = 0.1))
+  combined  = uwot::umap(wide_metab$mat_aml, n_neighbors = 15, min_dist = 0.1),
+  corrected = uwot::umap(wide_metab$mat_corrected, n_neighbors = 15, min_dist = 0.1),
+  beat      = uwot::umap(wide_metab$mat_beat, n_neighbors = 15, min_dist = 0.1),
+  tcga      = uwot::umap(wide_metab$mat_tcga,n_neighbors = 15, min_dist = 0.1))
 ```
 
 ::: {.panel-tabset}
@@ -460,7 +738,7 @@ res_umap <- list(
 
 ```{r, fig.width=10, fig.height=7}
 umap_plot(res_umap$combined,
-          color_vec = meta_aml$cohort,
+          color_vec = wide_metab$meta_aml$cohort,
           title     = "UMAP — combined cohorts (no correction)",
           palette   = c("#E64B35", "#4DBBD5"))
 ```
@@ -469,7 +747,7 @@ umap_plot(res_umap$combined,
 
 ```{r, fig.width=10, fig.height=7}
 umap_plot(res_umap$corrected,
-          color_vec = meta_aml$cohort,
+          color_vec = wide_metab$meta_aml$cohort,
           title     = "UMAP — combined cohorts (batch corrected)",
           palette   = c("#E64B35", "#4DBBD5"))
 ```
@@ -478,7 +756,7 @@ umap_plot(res_umap$corrected,
 
 ```{r, fig.width=10, fig.height=7}
 umap_plot(res_umap$beat,
-          color_vec = meta_beat$Disease_Type,
+          color_vec = meta_beat_wes$Disease_Type,
           title     = "UMAP — BEAT-AML")
 ```
 
@@ -486,129 +764,66 @@ umap_plot(res_umap$beat,
 
 ```{r, fig.width=10, fig.height=7}
 umap_plot(res_umap$tcga,
-          color_vec = meta_tcga$Disease_Type,
+          color_vec = meta_tcga_wes$Disease_Type,
           title     = "UMAP — TCGA-LAML")
 ```
 
 :::
 
-## Highly Variable Genes
-
-### Selection
-
-To focus on biologically informative signal, we restrict downstream analyses to
-genes with meaningful expression variability across samples. We compute per-gene
-variance within each cohort independently on log2(TMM-CPM) values.
-
 ```{r}
-tbl_var <- long_aml_metab %>%
-    group_by(cohort, hugo) %>%
-    summarise(variance = var(log2_tmm_cpm), .groups = "drop")
-
-tbl_var <- long_aml_metab %>%
-    group_by(cohort, hugo) %>%
-    summarise(variance = var(log2_tmm_cpm), .groups = "drop")
-
-tbl_var %>%
-    ggplot(aes(x = variance, fill = cohort, group = cohort)) +
-    geom_density(alpha = .25) + theme_bw()
-
-library(effsize)
-
-cliff.delta(
-  tbl_var %>% filter(cohort == "BEAT") %>% pull(variance),
-  tbl_var %>% filter(cohort == "TCGA") %>% pull(variance))
+rm(umap_plot)
 ```
 
-The distributions are nearly identical between cohorts (Cliff's δ = -0.007,
-95% CI: -0.038 to 0.024), justifying a common threshold. We retain genes with
-variance > 1.0 in log2 scale, corresponding to a typical sample-to-sample
-variability of at least 2-fold in linear CPM units in at least one cohort.
-All selected HVGs are present in both datasets.
+
+# Heatmaps
 
 ```{r}
-hvg_genes_any <- tbl_var %>%
-  group_by(hugo) %>%
-  filter(any(variance > 1.0)) %>% 
-  ungroup() %>% pull(hugo) %>% unique()
-
-hvg_genes_all <- tbl_var %>%
-  group_by(hugo) %>%
-  filter(all(variance > 1.0)) %>% 
-  ungroup() %>% pull(hugo) %>% unique()
-
-all(hvg_genes_any %in% colnames(mat_tcga))
-
-tbl_var %>% 
-  filter(hugo %in% hvg_genes_any) %>% 
-  pivot_wider(names_from = "cohort", values_from = "variance") %>% 
-  mutate(diff = abs(BEAT - TCGA)) %>% 
-  filter(BEAT < 1 | TCGA < 1, diff > 2)
-
-tbl_var %>%
-  filter(hugo %in% hvg_genes_any) %>%
-  pivot_wider(names_from = "cohort", values_from = "variance") %>%
-  arrange(desc(BEAT + TCGA))
-```
-
-Two genes show large inter-cohort variance discrepancies: CRISP3 (var: 6.36 in
-BEAT, 0.93 in TCGA) and HSD11B1 (var: 0.12 in BEAT, 5.37 in TCGA). Both are
-retained under the `any` threshold and excluded under `all`.
-
-### Heatmaps
-
-```{r}
-library(pheatmap)
-
-beat_idx <- which(meta_aml$cohort == "BEAT")
-tcga_idx <- which(meta_aml$cohort == "TCGA")
-
-# Annotation bars
-anno_beat <- meta_aml %>%
-  filter(cohort == "BEAT") %>%
-  select(sample_id, Disease_Type, Gender) %>%
-  column_to_rownames("sample_id")
-
-anno_tcga <- meta_aml %>%
-  filter(cohort == "TCGA") %>%
-  select(sample_id, Disease_Type, Gender) %>%
-  column_to_rownames("sample_id")
-
-# Common heatmap arguments
-heatmap_args <- list(
-  scale        = "column",        # z-score per gene
-  cluster_rows = TRUE,            # cluster samples
-  cluster_cols = TRUE,            # cluster genes
-  show_rownames = FALSE,          # too many samples to label
-  show_colnames = FALSE,
-  color        = colorRampPalette(rev(RColorBrewer::brewer.pal(11, "RdBu")))(100),
-  border_color = NA,
-  cellwidth     = 2, 
-  cellheight     = 2
+pheatmap_params <- list(
+  # Annotation bars
+  anno_beat = wide_metab$meta_beat %>%
+    select(sample_id, Disease_Type, Gender) %>%
+    column_to_rownames("sample_id"),
+  
+  anno_tcga = wide_metab$meta_tcga %>%
+    select(sample_id, Disease_Type, Gender) %>%
+    column_to_rownames("sample_id"),
+  
+  # Common heatmap arguments
+  heatmap_args = list(
+    scale        = "column",        # z-score per gene
+    cluster_rows = TRUE,            # cluster samples
+    cluster_cols = TRUE,            # cluster genes
+    show_rownames = FALSE,          # too many samples to label
+    show_colnames = FALSE,
+    color        = colorRampPalette(rev(RColorBrewer::brewer.pal(11, "RdBu")))(100),
+    border_color = NA,
+    cellwidth     = .5, 
+    cellheight     = 2
+  )
 )
 ```
 
 
 ::: {.panel-tabset}
 
-## BEAT-AML
+## BEAT
 
-```{r, fig.width=16, fig.height=12}
-do.call(pheatmap, c(
-  list(mat            = mat_aml[beat_idx, hvg_genes_any],
-       main           = "HVG expression — BEAT-AML",
-       annotation_row = anno_beat),
-  heatmap_args))
+```{r, fig.width=24, fig.height=12}
+do.call(pheatmap::pheatmap, c(
+  list(mat            = wide_metab$mat_beat,
+       main           = "BEAT",
+       annotation_row = pheatmap_params$anno_beat),
+  pheatmap_params$heatmap_args))
 ```
 
-## TCGA-LAML
+## TCGA
 
-```{r, fig.width=16, fig.height=12}
-do.call(pheatmap, c(
-  list(mat            = mat_aml[tcga_idx, hvg_genes_any],
-       main           = "HVG expression — TCGA-LAML",
-       annotation_row = anno_tcga),
-  heatmap_args))
+```{r, fig.width=24, fig.height=12}
+do.call(pheatmap::pheatmap, c(
+  list(mat            = wide_metab$mat_tcga,
+       main           = "TCGA",
+       annotation_row = pheatmap_params$anno_tcga),
+  pheatmap_params$heatmap_args))
 ```
 
 :::
@@ -627,7 +842,7 @@ genes — particularly important with the sample sizes available here.
 
 ```{r}
 # Design matrix — one column per group, first level absorbed into intercept
-meta_beat <- meta_beat %>%
+meta_beat_wes <- meta_beat_wes %>%
   mutate(Disease_Type_fct = fct_collapse(Disease_Type,
     therapy_related = c("t-AML", "t-MNs")))
 
@@ -707,3 +922,93 @@ glue::glue("Samples: {nrow(mat_wgcna)} | Genes: {ncol(mat_wgcna)} | Traits: {nco
 ```
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<!-- ## Highly Variable Genes -->
+
+<!-- ### Selection -->
+
+<!-- To focus on biologically informative signal, we restrict downstream analyses to -->
+<!-- genes with meaningful expression variability across samples. We compute per-gene -->
+<!-- variance within each cohort independently on log2(TMM-CPM) values. -->
+
+<!-- ```{r} -->
+<!-- tbl_var <- long_aml_metab %>% -->
+<!--     group_by(cohort, hugo) %>% -->
+<!--     summarise(variance = var(log2_tmm_cpm), .groups = "drop") -->
+
+<!-- tbl_var <- long_aml_metab %>% -->
+<!--     group_by(cohort, hugo) %>% -->
+<!--     summarise(variance = var(log2_tmm_cpm), .groups = "drop") -->
+
+<!-- tbl_var %>% -->
+<!--     ggplot(aes(x = variance, fill = cohort, group = cohort)) + -->
+<!--     geom_density(alpha = .25) + theme_bw() -->
+
+<!-- library(effsize) -->
+
+<!-- cliff.delta( -->
+<!--   tbl_var %>% filter(cohort == "BEAT") %>% pull(variance), -->
+<!--   tbl_var %>% filter(cohort == "TCGA") %>% pull(variance)) -->
+<!-- ``` -->
+
+<!-- The distributions are nearly identical between cohorts (Cliff's δ = -0.007, -->
+<!-- 95% CI: -0.038 to 0.024), justifying a common threshold. We retain genes with -->
+<!-- variance > 1.0 in log2 scale, corresponding to a typical sample-to-sample -->
+<!-- variability of at least 2-fold in linear CPM units in at least one cohort. -->
+<!-- All selected HVGs are present in both datasets. -->
+
+<!-- ```{r} -->
+<!-- hvg_genes_any <- tbl_var %>% -->
+<!--   group_by(hugo) %>% -->
+<!--   filter(any(variance > 1.0)) %>%  -->
+<!--   ungroup() %>% pull(hugo) %>% unique() -->
+
+<!-- hvg_genes_all <- tbl_var %>% -->
+<!--   group_by(hugo) %>% -->
+<!--   filter(all(variance > 1.0)) %>%  -->
+<!--   ungroup() %>% pull(hugo) %>% unique() -->
+
+<!-- all(hvg_genes_any %in% colnames(mat_tcga)) -->
+
+<!-- tbl_var %>%  -->
+<!--   filter(hugo %in% hvg_genes_any) %>%  -->
+<!--   pivot_wider(names_from = "cohort", values_from = "variance") %>%  -->
+<!--   mutate(diff = abs(BEAT - TCGA)) %>%  -->
+<!--   filter(BEAT < 1 | TCGA < 1, diff > 2) -->
+
+<!-- tbl_var %>% -->
+<!--   filter(hugo %in% hvg_genes_any) %>% -->
+<!--   pivot_wider(names_from = "cohort", values_from = "variance") %>% -->
+<!--   arrange(desc(BEAT + TCGA)) -->
+<!-- ``` -->
+
+<!-- Two genes show large inter-cohort variance discrepancies: CRISP3 (var: 6.36 in -->
+<!-- BEAT, 0.93 in TCGA) and HSD11B1 (var: 0.12 in BEAT, 5.37 in TCGA). Both are -->
+<!-- retained under the `any` threshold and excluded under `all`. -->

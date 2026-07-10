@@ -2,7 +2,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
 
 <meta charset="utf-8">
-<meta name="generator" content="quarto-1.9.37">
+<meta name="generator" content="quarto-1.9.38">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
@@ -68,10 +68,10 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <script src="prepare_data_files/libs/quarto-html/tippy.umd.min.js"></script>
 <script src="prepare_data_files/libs/quarto-html/anchor.min.js"></script>
 <link href="prepare_data_files/libs/quarto-html/tippy.css" rel="stylesheet">
-<link href="prepare_data_files/libs/quarto-html/quarto-syntax-highlighting-7f8f88aac4f3542376d5c11b86a4c14d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<link href="prepare_data_files/libs/quarto-html/quarto-syntax-highlighting-15634bcf2e68342d4ad2dfa704d543f6.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="prepare_data_files/libs/bootstrap/bootstrap.min.js"></script>
 <link href="prepare_data_files/libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="prepare_data_files/libs/bootstrap/bootstrap-ac703fce1c8db3a8219dc0268dee860d.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="prepare_data_files/libs/bootstrap/bootstrap-4d66f24aaae5dfa4975c5006b1b17436.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 
 
 </head>
@@ -113,7 +113,16 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <p>Long-format somatic mutation table shared across BEAT-AML, TCGA, and NGS-PTL. TCGA sample IDs have their <code>-03</code> suffix stripped to match the format used in the expression data.</p>
 <div class="cell">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>wes <span class="ot">&lt;-</span> <span class="fu">read_xlsx</span>(<span class="st">"../raw/WES_filtered_final.xlsx"</span>) <span class="sc">|&gt;</span></span>
-<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">ID =</span> <span class="fu">if_else</span>(cohort <span class="sc">==</span> <span class="st">"TCGA"</span>, <span class="fu">str_remove</span>(ID, <span class="st">"-03"</span>), ID))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">ID =</span> <span class="fu">if_else</span>(cohort <span class="sc">==</span> <span class="st">"TCGA"</span>, <span class="fu">str_remove</span>(ID, <span class="st">"-03"</span>), ID))</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Binary mutation matrix</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>wes_wide <span class="ot">&lt;-</span> wes <span class="sc">%&gt;%</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">distinct</span>(ID, gene_symbol) <span class="sc">%&gt;%</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">mutated =</span> <span class="cn">TRUE</span>) <span class="sc">%&gt;%</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">pivot_wider</span>(<span class="at">names_from  =</span> gene_symbol,</span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>              <span class="at">values_from =</span> mutated,</span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>              <span class="at">values_fill =</span> <span class="cn">FALSE</span>) <span class="sc">%&gt;%</span></span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>  <span class="fu">rename</span>(<span class="at">sample_id =</span> ID) </span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </div>
 </section>
 <section id="beat-aml-expression" class="level2">
@@ -137,8 +146,8 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 <p>Keep only samples present in both expression and WES.</p>
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>sample_id_wes <span class="ot">&lt;-</span> wes <span class="sc">|&gt;</span> <span class="fu">filter</span>(cohort <span class="sc">==</span> <span class="st">"BEAT-AML"</span>) <span class="sc">|&gt;</span> <span class="fu">pull</span>(ID) <span class="sc">|&gt;</span> <span class="fu">unique</span>()</span>
-<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="fu">ggVennDiagram</span>(<span class="at">x =</span> <span class="fu">list</span>(<span class="at">wes =</span> sample_id_wes, <span class="at">rna =</span> expr_beat<span class="sc">$</span>labId))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>sample_id_wes_beat <span class="ot">&lt;-</span> wes <span class="sc">|&gt;</span> <span class="fu">filter</span>(cohort <span class="sc">==</span> <span class="st">"BEAT-AML"</span>) <span class="sc">|&gt;</span> <span class="fu">pull</span>(ID) <span class="sc">|&gt;</span> <span class="fu">unique</span>()</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="fu">ggVennDiagram</span>(<span class="at">x =</span> <span class="fu">list</span>(<span class="at">wes =</span> sample_id_wes_beat, <span class="at">rna =</span> expr_beat<span class="sc">$</span>labId))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output-display">
 <div>
 <figure class="figure">
@@ -146,27 +155,27 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </figure>
 </div>
 </div>
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb5"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="fu">rm</span>(sample_id_wes)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </div>
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>expr_beat_aml <span class="ot">&lt;-</span> expr_beat <span class="sc">|&gt;</span></span>
-<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(labId <span class="sc">%in%</span> <span class="fu">intersect</span>(<span class="fu">unique</span>(wes<span class="sc">$</span>ID), labId))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb5"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>expr_beat_wes <span class="ot">&lt;-</span> expr_beat <span class="sc">|&gt;</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(labId <span class="sc">%in%</span> sample_id_wes_beat)</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="fu">rm</span>(sample_id_wes_beat)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </div>
 </section>
 <section id="tcga-aml-expression" class="level2">
 <h2 class="anchored" data-anchor-id="tcga-aml-expression">TCGA-AML expression</h2>
 <p>The raw file has one row per Ensembl ID with a <code>hugo</code> column. Rows with missing or duplicated Hugo symbols are removed before pivoting to wide format (samples × genes).</p>
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb7"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>expr_tcga <span class="ot">&lt;-</span> <span class="fu">read_tsv</span>(<span class="st">"../raw/200221_TCGA-LAML_CPM-TMM.tsv.xz"</span>,</span>
-<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>                      <span class="at">show_col_types =</span> <span class="cn">FALSE</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>expr_tcga <span class="ot">&lt;-</span> <span class="fu">read_tsv</span>(<span class="st">"../raw/200221_TCGA-LAML_CPM-TMM.tsv.xz"</span>,</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>                      <span class="at">show_col_types =</span> <span class="cn">FALSE</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </div>
 <p>Inspect duplicated Hugo symbols before dropping them.</p>
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb8"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>expr_tcga <span class="sc">|&gt;</span></span>
-<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">group_by</span>(hugo) <span class="sc">|&gt;</span></span>
-<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(<span class="fu">n</span>() <span class="sc">&gt;</span> <span class="dv">1</span>) <span class="sc">|&gt;</span></span>
-<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">relocate</span>(hugo) <span class="sc">|&gt;</span></span>
-<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">arrange</span>(hugo)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb7"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>expr_tcga <span class="sc">|&gt;</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">group_by</span>(hugo) <span class="sc">|&gt;</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(<span class="fu">n</span>() <span class="sc">&gt;</span> <span class="dv">1</span>) <span class="sc">|&gt;</span></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">relocate</span>(hugo) <span class="sc">|&gt;</span></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">arrange</span>(hugo)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-stdout">
 <pre><code># A tibble: 8,208 × 153
 # Groups:   hugo [3]
@@ -192,22 +201,22 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb10"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>taxa_tcga <span class="ot">&lt;-</span> expr_tcga <span class="sc">|&gt;</span> <span class="fu">select</span>(hugo, ensembl_gene_id)</span>
-<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>expr_tcga <span class="ot">&lt;-</span> expr_tcga <span class="sc">|&gt;</span></span>
-<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(<span class="sc">!</span><span class="fu">is.na</span>(hugo)) <span class="sc">|&gt;</span></span>
-<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">group_by</span>(hugo) <span class="sc">|&gt;</span></span>
-<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(<span class="fu">n</span>() <span class="sc">==</span> <span class="dv">1</span>) <span class="sc">|&gt;</span></span>
-<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ungroup</span>() <span class="sc">|&gt;</span></span>
-<span id="cb10-8"><a href="#cb10-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">select</span>(<span class="sc">-</span>ensembl_gene_id) <span class="sc">|&gt;</span></span>
-<span id="cb10-9"><a href="#cb10-9" aria-hidden="true" tabindex="-1"></a>  <span class="fu">column_to_rownames</span>(<span class="st">"hugo"</span>) <span class="sc">|&gt;</span></span>
-<span id="cb10-10"><a href="#cb10-10" aria-hidden="true" tabindex="-1"></a>  <span class="fu">t</span>() <span class="sc">|&gt;</span></span>
-<span id="cb10-11"><a href="#cb10-11" aria-hidden="true" tabindex="-1"></a>  <span class="fu">as_tibble</span>(<span class="at">rownames =</span> <span class="st">"sample_id"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb9"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>taxa_tcga <span class="ot">&lt;-</span> expr_tcga <span class="sc">|&gt;</span> <span class="fu">select</span>(hugo, ensembl_gene_id)</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>expr_tcga <span class="ot">&lt;-</span> expr_tcga <span class="sc">|&gt;</span></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(<span class="sc">!</span><span class="fu">is.na</span>(hugo)) <span class="sc">|&gt;</span></span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">group_by</span>(hugo) <span class="sc">|&gt;</span></span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(<span class="fu">n</span>() <span class="sc">==</span> <span class="dv">1</span>) <span class="sc">|&gt;</span></span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ungroup</span>() <span class="sc">|&gt;</span></span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">select</span>(<span class="sc">-</span>ensembl_gene_id) <span class="sc">|&gt;</span></span>
+<span id="cb9-9"><a href="#cb9-9" aria-hidden="true" tabindex="-1"></a>  <span class="fu">column_to_rownames</span>(<span class="st">"hugo"</span>) <span class="sc">|&gt;</span></span>
+<span id="cb9-10"><a href="#cb9-10" aria-hidden="true" tabindex="-1"></a>  <span class="fu">t</span>() <span class="sc">|&gt;</span></span>
+<span id="cb9-11"><a href="#cb9-11" aria-hidden="true" tabindex="-1"></a>  <span class="fu">as_tibble</span>(<span class="at">rownames =</span> <span class="st">"sample_id"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </div>
 <p>Keep only samples present in both expression and WES.</p>
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb11"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>sample_id_wes <span class="ot">&lt;-</span> wes <span class="sc">|&gt;</span> <span class="fu">filter</span>(cohort <span class="sc">==</span> <span class="st">"TCGA"</span>) <span class="sc">|&gt;</span> <span class="fu">pull</span>(ID) <span class="sc">|&gt;</span> <span class="fu">unique</span>()</span>
-<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a><span class="fu">ggVennDiagram</span>(<span class="at">x =</span> <span class="fu">list</span>(<span class="at">wes =</span> sample_id_wes, <span class="at">rna =</span> expr_tcga<span class="sc">$</span>sample_id))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb10"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>sample_id_wes_tcga <span class="ot">&lt;-</span> wes <span class="sc">|&gt;</span> <span class="fu">filter</span>(cohort <span class="sc">==</span> <span class="st">"TCGA"</span>) <span class="sc">|&gt;</span> <span class="fu">pull</span>(ID) <span class="sc">|&gt;</span> <span class="fu">unique</span>()</span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a><span class="fu">ggVennDiagram</span>(<span class="at">x =</span> <span class="fu">list</span>(<span class="at">wes =</span> sample_id_wes_tcga, <span class="at">rna =</span> expr_tcga<span class="sc">$</span>sample_id))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output-display">
 <div>
 <figure class="figure">
@@ -215,19 +224,19 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </figure>
 </div>
 </div>
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb12"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="fu">rm</span>(sample_id_wes)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </div>
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb13"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>expr_tcga_aml <span class="ot">&lt;-</span> expr_tcga <span class="sc">|&gt;</span></span>
-<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(sample_id <span class="sc">%in%</span> <span class="fu">intersect</span>(<span class="fu">unique</span>(wes<span class="sc">$</span>ID), sample_id))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb11"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>expr_tcga_wes <span class="ot">&lt;-</span> expr_tcga <span class="sc">|&gt;</span></span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(sample_id <span class="sc">%in%</span> sample_id_wes_tcga)</span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a><span class="fu">rm</span>(sample_id_wes_tcga)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </div>
 </section>
 <section id="gene-overlap-beat-aml-vs-tcga-aml" class="level2">
 <h2 class="anchored" data-anchor-id="gene-overlap-beat-aml-vs-tcga-aml">Gene overlap: BEAT-AML vs TCGA-AML</h2>
 <p>The two cohorts were normalised independently and cannot be merged. Genes exclusive to BEAT-AML are nearly all zero (&gt;99% zero counts) and will be dropped when filtering to Human-GEM metabolic genes.</p>
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb14"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggVennDiagram</span>(<span class="at">x =</span> <span class="fu">list</span>(<span class="at">beat =</span> <span class="fu">colnames</span>(expr_beat_aml)[<span class="sc">-</span><span class="dv">1</span>],</span>
-<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>                       <span class="at">tcga =</span> <span class="fu">colnames</span>(expr_tcga_aml)[<span class="sc">-</span><span class="dv">1</span>]))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb12"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggVennDiagram</span>(<span class="at">x =</span> <span class="fu">list</span>(<span class="at">beat =</span> <span class="fu">colnames</span>(expr_beat_wes)[<span class="sc">-</span><span class="dv">1</span>],</span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>                       <span class="at">tcga =</span> <span class="fu">colnames</span>(expr_tcga_wes)[<span class="sc">-</span><span class="dv">1</span>]))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output-display">
 <div>
 <figure class="figure">
@@ -237,175 +246,510 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb15"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>inter     <span class="ot">&lt;-</span> <span class="fu">intersect</span>(<span class="fu">colnames</span>(expr_beat_aml)[<span class="sc">-</span><span class="dv">1</span>], <span class="fu">colnames</span>(expr_tcga_aml)[<span class="sc">-</span><span class="dv">1</span>])</span>
-<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>only_beat <span class="ot">&lt;-</span> <span class="fu">setdiff</span>(<span class="fu">colnames</span>(expr_beat_aml)[<span class="sc">-</span><span class="dv">1</span>], <span class="fu">colnames</span>(expr_tcga_aml)[<span class="sc">-</span><span class="dv">1</span>])</span>
-<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">"Shared gene expression fraction — BEAT:"</span>, <span class="fu">sum</span>(expr_beat_aml[, inter]) <span class="sc">/</span> <span class="fu">sum</span>(expr_beat_aml[, <span class="sc">-</span><span class="dv">1</span>]), <span class="st">"</span><span class="sc">\n</span><span class="st">"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>Shared gene expression fraction — BEAT: 0.99236 </code></pre>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb13"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="fu">local</span>({</span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a>  inter <span class="ot">&lt;-</span> <span class="fu">intersect</span>(<span class="fu">colnames</span>(expr_beat_wes)[<span class="sc">-</span><span class="dv">1</span>], <span class="fu">colnames</span>(expr_tcga_wes)[<span class="sc">-</span><span class="dv">1</span>])</span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a>  only_beat <span class="ot">&lt;-</span> <span class="fu">setdiff</span>(<span class="fu">colnames</span>(expr_beat_wes)[<span class="sc">-</span><span class="dv">1</span>], <span class="fu">colnames</span>(expr_tcga_wes)[<span class="sc">-</span><span class="dv">1</span>])</span>
+<span id="cb13-6"><a href="#cb13-6" aria-hidden="true" tabindex="-1"></a>  only_tcga <span class="ot">&lt;-</span> <span class="fu">setdiff</span>(<span class="fu">colnames</span>(expr_tcga_wes)[<span class="sc">-</span><span class="dv">1</span>], <span class="fu">colnames</span>(expr_beat_wes)[<span class="sc">-</span><span class="dv">1</span>])</span>
+<span id="cb13-7"><a href="#cb13-7" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb13-8"><a href="#cb13-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">tibble</span>(</span>
+<span id="cb13-9"><a href="#cb13-9" aria-hidden="true" tabindex="-1"></a>    <span class="at">cohort =</span> <span class="fu">c</span>(<span class="st">"BEAT-AML"</span>, <span class="st">"TCGA-LAML"</span>),</span>
+<span id="cb13-10"><a href="#cb13-10" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb13-11"><a href="#cb13-11" aria-hidden="true" tabindex="-1"></a>    <span class="at">wes_samples =</span> <span class="fu">c</span>(</span>
+<span id="cb13-12"><a href="#cb13-12" aria-hidden="true" tabindex="-1"></a>      wes <span class="sc">|&gt;</span> <span class="fu">filter</span>(cohort <span class="sc">==</span> <span class="st">"BEAT-AML"</span>) <span class="sc">|&gt;</span> <span class="fu">pull</span>(ID) <span class="sc">|&gt;</span> <span class="fu">unique</span>() <span class="sc">|&gt;</span> <span class="fu">length</span>(),</span>
+<span id="cb13-13"><a href="#cb13-13" aria-hidden="true" tabindex="-1"></a>      wes <span class="sc">|&gt;</span> <span class="fu">filter</span>(cohort <span class="sc">==</span> <span class="st">"TCGA"</span>) <span class="sc">|&gt;</span> <span class="fu">pull</span>(ID) <span class="sc">|&gt;</span> <span class="fu">unique</span>() <span class="sc">|&gt;</span> <span class="fu">length</span>()</span>
+<span id="cb13-14"><a href="#cb13-14" aria-hidden="true" tabindex="-1"></a>    ),</span>
+<span id="cb13-15"><a href="#cb13-15" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb13-16"><a href="#cb13-16" aria-hidden="true" tabindex="-1"></a>    <span class="at">rna_samples =</span> <span class="fu">c</span>(</span>
+<span id="cb13-17"><a href="#cb13-17" aria-hidden="true" tabindex="-1"></a>      <span class="fu">n_distinct</span>(expr_beat<span class="sc">$</span>labId),</span>
+<span id="cb13-18"><a href="#cb13-18" aria-hidden="true" tabindex="-1"></a>      <span class="fu">n_distinct</span>(expr_tcga<span class="sc">$</span>sample_id)</span>
+<span id="cb13-19"><a href="#cb13-19" aria-hidden="true" tabindex="-1"></a>    ),</span>
+<span id="cb13-20"><a href="#cb13-20" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb13-21"><a href="#cb13-21" aria-hidden="true" tabindex="-1"></a>    <span class="at">matched_rna_wes_samples =</span> <span class="fu">c</span>(</span>
+<span id="cb13-22"><a href="#cb13-22" aria-hidden="true" tabindex="-1"></a>      <span class="fu">n_distinct</span>(expr_beat_wes<span class="sc">$</span>labId),</span>
+<span id="cb13-23"><a href="#cb13-23" aria-hidden="true" tabindex="-1"></a>      <span class="fu">n_distinct</span>(expr_tcga_wes<span class="sc">$</span>sample_id)</span>
+<span id="cb13-24"><a href="#cb13-24" aria-hidden="true" tabindex="-1"></a>    ),</span>
+<span id="cb13-25"><a href="#cb13-25" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb13-26"><a href="#cb13-26" aria-hidden="true" tabindex="-1"></a>    <span class="at">total_genes =</span> <span class="fu">c</span>(</span>
+<span id="cb13-27"><a href="#cb13-27" aria-hidden="true" tabindex="-1"></a>      <span class="fu">ncol</span>(expr_beat_wes) <span class="sc">-</span> <span class="dv">1</span>,</span>
+<span id="cb13-28"><a href="#cb13-28" aria-hidden="true" tabindex="-1"></a>      <span class="fu">ncol</span>(expr_tcga_wes) <span class="sc">-</span> <span class="dv">1</span></span>
+<span id="cb13-29"><a href="#cb13-29" aria-hidden="true" tabindex="-1"></a>    ),</span>
+<span id="cb13-30"><a href="#cb13-30" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb13-31"><a href="#cb13-31" aria-hidden="true" tabindex="-1"></a>    <span class="at">shared_genes =</span> <span class="fu">length</span>(inter),</span>
+<span id="cb13-32"><a href="#cb13-32" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb13-33"><a href="#cb13-33" aria-hidden="true" tabindex="-1"></a>    <span class="at">cohort_specific_genes =</span> <span class="fu">c</span>(</span>
+<span id="cb13-34"><a href="#cb13-34" aria-hidden="true" tabindex="-1"></a>      <span class="fu">length</span>(only_beat),</span>
+<span id="cb13-35"><a href="#cb13-35" aria-hidden="true" tabindex="-1"></a>      <span class="fu">length</span>(only_tcga)</span>
+<span id="cb13-36"><a href="#cb13-36" aria-hidden="true" tabindex="-1"></a>    ),</span>
+<span id="cb13-37"><a href="#cb13-37" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb13-38"><a href="#cb13-38" aria-hidden="true" tabindex="-1"></a>    <span class="at">zero_fraction_in_shared_genes =</span> <span class="fu">c</span>(</span>
+<span id="cb13-39"><a href="#cb13-39" aria-hidden="true" tabindex="-1"></a>      <span class="fu">mean</span>(<span class="fu">as.matrix</span>(expr_beat_wes[, inter, <span class="at">drop =</span> <span class="cn">FALSE</span>]) <span class="sc">==</span> <span class="dv">0</span>, <span class="at">na.rm =</span> <span class="cn">TRUE</span>),</span>
+<span id="cb13-40"><a href="#cb13-40" aria-hidden="true" tabindex="-1"></a>      <span class="fu">mean</span>(<span class="fu">as.matrix</span>(expr_tcga_wes[, inter, <span class="at">drop =</span> <span class="cn">FALSE</span>]) <span class="sc">==</span> <span class="dv">0</span>, <span class="at">na.rm =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb13-41"><a href="#cb13-41" aria-hidden="true" tabindex="-1"></a>    ),</span>
+<span id="cb13-42"><a href="#cb13-42" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb13-43"><a href="#cb13-43" aria-hidden="true" tabindex="-1"></a>    <span class="at">shared_expression_fraction =</span> <span class="fu">c</span>(</span>
+<span id="cb13-44"><a href="#cb13-44" aria-hidden="true" tabindex="-1"></a>      <span class="fu">sum</span>(<span class="fu">as.matrix</span>(expr_beat_wes[, inter, <span class="at">drop =</span> <span class="cn">FALSE</span>]), <span class="at">na.rm =</span> <span class="cn">TRUE</span>) <span class="sc">/</span></span>
+<span id="cb13-45"><a href="#cb13-45" aria-hidden="true" tabindex="-1"></a>        <span class="fu">sum</span>(<span class="fu">as.matrix</span>(expr_beat_wes[, <span class="sc">-</span><span class="dv">1</span>, <span class="at">drop =</span> <span class="cn">FALSE</span>]), <span class="at">na.rm =</span> <span class="cn">TRUE</span>),</span>
+<span id="cb13-46"><a href="#cb13-46" aria-hidden="true" tabindex="-1"></a>      </span>
+<span id="cb13-47"><a href="#cb13-47" aria-hidden="true" tabindex="-1"></a>      <span class="fu">sum</span>(<span class="fu">as.matrix</span>(expr_tcga_wes[, inter, <span class="at">drop =</span> <span class="cn">FALSE</span>]), <span class="at">na.rm =</span> <span class="cn">TRUE</span>) <span class="sc">/</span></span>
+<span id="cb13-48"><a href="#cb13-48" aria-hidden="true" tabindex="-1"></a>        <span class="fu">sum</span>(<span class="fu">as.matrix</span>(expr_tcga_wes[, <span class="sc">-</span><span class="dv">1</span>, <span class="at">drop =</span> <span class="cn">FALSE</span>]), <span class="at">na.rm =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb13-49"><a href="#cb13-49" aria-hidden="true" tabindex="-1"></a>    ),</span>
+<span id="cb13-50"><a href="#cb13-50" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb13-51"><a href="#cb13-51" aria-hidden="true" tabindex="-1"></a>    <span class="at">zero_fraction_in_cohort_specific_genes =</span> <span class="fu">c</span>(</span>
+<span id="cb13-52"><a href="#cb13-52" aria-hidden="true" tabindex="-1"></a>      <span class="cf">if</span> (<span class="fu">length</span>(only_beat) <span class="sc">==</span> <span class="dv">0</span>) {</span>
+<span id="cb13-53"><a href="#cb13-53" aria-hidden="true" tabindex="-1"></a>        <span class="cn">NA_real_</span></span>
+<span id="cb13-54"><a href="#cb13-54" aria-hidden="true" tabindex="-1"></a>      } <span class="cf">else</span> {</span>
+<span id="cb13-55"><a href="#cb13-55" aria-hidden="true" tabindex="-1"></a>        <span class="fu">mean</span>(<span class="fu">as.matrix</span>(expr_beat_wes[, only_beat, <span class="at">drop =</span> <span class="cn">FALSE</span>]) <span class="sc">==</span> <span class="dv">0</span>, <span class="at">na.rm =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb13-56"><a href="#cb13-56" aria-hidden="true" tabindex="-1"></a>      },</span>
+<span id="cb13-57"><a href="#cb13-57" aria-hidden="true" tabindex="-1"></a>      </span>
+<span id="cb13-58"><a href="#cb13-58" aria-hidden="true" tabindex="-1"></a>      <span class="cf">if</span> (<span class="fu">length</span>(only_tcga) <span class="sc">==</span> <span class="dv">0</span>) {</span>
+<span id="cb13-59"><a href="#cb13-59" aria-hidden="true" tabindex="-1"></a>        <span class="cn">NA_real_</span></span>
+<span id="cb13-60"><a href="#cb13-60" aria-hidden="true" tabindex="-1"></a>      } <span class="cf">else</span> {</span>
+<span id="cb13-61"><a href="#cb13-61" aria-hidden="true" tabindex="-1"></a>        <span class="fu">mean</span>(<span class="fu">as.matrix</span>(expr_tcga_wes[, only_tcga, <span class="at">drop =</span> <span class="cn">FALSE</span>]) <span class="sc">==</span> <span class="dv">0</span>, <span class="at">na.rm =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb13-62"><a href="#cb13-62" aria-hidden="true" tabindex="-1"></a>      }</span>
+<span id="cb13-63"><a href="#cb13-63" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb13-64"><a href="#cb13-64" aria-hidden="true" tabindex="-1"></a>  ) <span class="sc">|&gt;</span></span>
+<span id="cb13-65"><a href="#cb13-65" aria-hidden="true" tabindex="-1"></a>    <span class="fu">mutate</span>(</span>
+<span id="cb13-66"><a href="#cb13-66" aria-hidden="true" tabindex="-1"></a>      <span class="at">zero_fraction_in_shared_genes =</span> scales<span class="sc">::</span><span class="fu">percent</span>(</span>
+<span id="cb13-67"><a href="#cb13-67" aria-hidden="true" tabindex="-1"></a>        zero_fraction_in_shared_genes,</span>
+<span id="cb13-68"><a href="#cb13-68" aria-hidden="true" tabindex="-1"></a>        <span class="at">accuracy =</span> <span class="fl">0.01</span></span>
+<span id="cb13-69"><a href="#cb13-69" aria-hidden="true" tabindex="-1"></a>      ),</span>
+<span id="cb13-70"><a href="#cb13-70" aria-hidden="true" tabindex="-1"></a>      <span class="at">shared_expression_fraction =</span> scales<span class="sc">::</span><span class="fu">percent</span>(</span>
+<span id="cb13-71"><a href="#cb13-71" aria-hidden="true" tabindex="-1"></a>        shared_expression_fraction,</span>
+<span id="cb13-72"><a href="#cb13-72" aria-hidden="true" tabindex="-1"></a>        <span class="at">accuracy =</span> <span class="fl">0.01</span></span>
+<span id="cb13-73"><a href="#cb13-73" aria-hidden="true" tabindex="-1"></a>      ),</span>
+<span id="cb13-74"><a href="#cb13-74" aria-hidden="true" tabindex="-1"></a>      <span class="at">zero_fraction_in_cohort_specific_genes =</span> scales<span class="sc">::</span><span class="fu">percent</span>(</span>
+<span id="cb13-75"><a href="#cb13-75" aria-hidden="true" tabindex="-1"></a>        zero_fraction_in_cohort_specific_genes,</span>
+<span id="cb13-76"><a href="#cb13-76" aria-hidden="true" tabindex="-1"></a>        <span class="at">accuracy =</span> <span class="fl">0.01</span></span>
+<span id="cb13-77"><a href="#cb13-77" aria-hidden="true" tabindex="-1"></a>      )</span>
+<span id="cb13-78"><a href="#cb13-78" aria-hidden="true" tabindex="-1"></a>    ) <span class="sc">|&gt;</span></span>
+<span id="cb13-79"><a href="#cb13-79" aria-hidden="true" tabindex="-1"></a>    knitr<span class="sc">::</span><span class="fu">kable</span>(</span>
+<span id="cb13-80"><a href="#cb13-80" aria-hidden="true" tabindex="-1"></a>      <span class="at">col.names =</span> <span class="fu">c</span>(</span>
+<span id="cb13-81"><a href="#cb13-81" aria-hidden="true" tabindex="-1"></a>        <span class="st">"Cohort"</span>,</span>
+<span id="cb13-82"><a href="#cb13-82" aria-hidden="true" tabindex="-1"></a>        <span class="st">"WES samples"</span>,</span>
+<span id="cb13-83"><a href="#cb13-83" aria-hidden="true" tabindex="-1"></a>        <span class="st">"RNA samples"</span>,</span>
+<span id="cb13-84"><a href="#cb13-84" aria-hidden="true" tabindex="-1"></a>        <span class="st">"Matched RNA-WES samples"</span>,</span>
+<span id="cb13-85"><a href="#cb13-85" aria-hidden="true" tabindex="-1"></a>        <span class="st">"Total genes"</span>,</span>
+<span id="cb13-86"><a href="#cb13-86" aria-hidden="true" tabindex="-1"></a>        <span class="st">"Shared genes"</span>,</span>
+<span id="cb13-87"><a href="#cb13-87" aria-hidden="true" tabindex="-1"></a>        <span class="st">"Cohort-specific genes"</span>,</span>
+<span id="cb13-88"><a href="#cb13-88" aria-hidden="true" tabindex="-1"></a>        <span class="st">"Zero values in shared genes (%)"</span>,</span>
+<span id="cb13-89"><a href="#cb13-89" aria-hidden="true" tabindex="-1"></a>        <span class="st">"Total expression found in shared genes (%)"</span>,</span>
+<span id="cb13-90"><a href="#cb13-90" aria-hidden="true" tabindex="-1"></a>        <span class="st">"Zero values in cohort-specific genes (%)"</span></span>
+<span id="cb13-91"><a href="#cb13-91" aria-hidden="true" tabindex="-1"></a>      ),</span>
+<span id="cb13-92"><a href="#cb13-92" aria-hidden="true" tabindex="-1"></a>      <span class="at">align =</span> <span class="fu">c</span>(<span class="st">"l"</span>, <span class="fu">rep</span>(<span class="st">"c"</span>, <span class="dv">9</span>))</span>
+<span id="cb13-93"><a href="#cb13-93" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb13-94"><a href="#cb13-94" aria-hidden="true" tabindex="-1"></a>})</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output-display">
+<table class="caption-top table table-sm table-striped small">
+<colgroup>
+<col style="width: 4%">
+<col style="width: 5%">
+<col style="width: 5%">
+<col style="width: 10%">
+<col style="width: 5%">
+<col style="width: 6%">
+<col style="width: 10%">
+<col style="width: 14%">
+<col style="width: 19%">
+<col style="width: 18%">
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: left;">Cohort</th>
+<th style="text-align: center;">WES samples</th>
+<th style="text-align: center;">RNA samples</th>
+<th style="text-align: center;">Matched RNA-WES samples</th>
+<th style="text-align: center;">Total genes</th>
+<th style="text-align: center;">Shared genes</th>
+<th style="text-align: center;">Cohort-specific genes</th>
+<th style="text-align: center;">Zero values in shared genes (%)</th>
+<th style="text-align: center;">Total expression found in shared genes (%)</th>
+<th style="text-align: center;">Zero values in cohort-specific genes (%)</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: left;">BEAT-AML</td>
+<td style="text-align: center;">305</td>
+<td style="text-align: center;">484</td>
+<td style="text-align: center;">217</td>
+<td style="text-align: center;">35566</td>
+<td style="text-align: center;">22662</td>
+<td style="text-align: center;">12904</td>
+<td style="text-align: center;">10.69%</td>
+<td style="text-align: center;">99.24%</td>
+<td style="text-align: center;">77.52%</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">TCGA-LAML</td>
+<td style="text-align: center;">186</td>
+<td style="text-align: center;">151</td>
+<td style="text-align: center;">140</td>
+<td style="text-align: center;">22687</td>
+<td style="text-align: center;">22662</td>
+<td style="text-align: center;">25</td>
+<td style="text-align: center;">5.28%</td>
+<td style="text-align: center;">99.98%</td>
+<td style="text-align: center;">15.26%</td>
+</tr>
+</tbody>
+</table>
 </div>
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb17"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">"Shared gene expression fraction — TCGA:"</span>, <span class="fu">sum</span>(expr_tcga_aml[, inter]) <span class="sc">/</span> <span class="fu">sum</span>(expr_tcga_aml[, <span class="sc">-</span><span class="dv">1</span>]), <span class="st">"</span><span class="sc">\n</span><span class="st">"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>Shared gene expression fraction — TCGA: 0.9997504 </code></pre>
-</div>
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb19"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">"Zero fraction in BEAT-only genes:"</span>, <span class="fu">sum</span>(expr_beat_aml[, only_beat] <span class="sc">==</span> <span class="dv">0</span>) <span class="sc">/</span> <span class="fu">length</span>(<span class="fu">as.matrix</span>(expr_beat_aml[, only_beat])), <span class="st">"</span><span class="sc">\n</span><span class="st">"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>Zero fraction in BEAT-only genes: 0.7752063 </code></pre>
-</div>
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb21"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="fu">rm</span>(inter, only_beat)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </div>
 </section>
 <section id="export-expression-matrices" class="level2">
 <h2 class="anchored" data-anchor-id="export-expression-matrices">Export expression matrices</h2>
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb22"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a>expr_beat_aml <span class="sc">|&gt;</span></span>
-<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">rename</span>(<span class="at">sample_id =</span> labId) <span class="sc">|&gt;</span></span>
-<span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">write_tsv</span>(<span class="fu">xzfile</span>(<span class="st">"../processed/beat_aml_expression.tsv.xz"</span>))</span>
-<span id="cb22-4"><a href="#cb22-4" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb22-5"><a href="#cb22-5" aria-hidden="true" tabindex="-1"></a>expr_tcga_aml <span class="sc">|&gt;</span></span>
-<span id="cb22-6"><a href="#cb22-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">write_tsv</span>(<span class="fu">xzfile</span>(<span class="st">"../processed/tcga_aml_expression.tsv.xz"</span>))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb14"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>expr_beat_wes <span class="sc">|&gt;</span></span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">rename</span>(<span class="at">sample_id =</span> labId) <span class="sc">|&gt;</span></span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">write_tsv</span>(<span class="fu">xzfile</span>(<span class="st">"../processed/beat_wes_expression.tsv.xz"</span>))</span>
+<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a>expr_tcga_wes <span class="sc">|&gt;</span></span>
+<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">write_tsv</span>(<span class="fu">xzfile</span>(<span class="st">"../processed/tcga_wes_expression.tsv.xz"</span>))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </div>
 </section>
 <section id="metadata" class="level2">
 <h2 class="anchored" data-anchor-id="metadata">Metadata</h2>
 <p>Sample-level metadata assembled from the karyotype file and the BEAT-AML mapping table. Rows are sorted to match the expression matrix row order.</p>
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb23"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a>karyotype <span class="ot">&lt;-</span> <span class="fu">read_xlsx</span>(<span class="st">"../raw/Karyotype and other variables.xlsx"</span>, <span class="at">col_types =</span> <span class="st">"text"</span>) <span class="sc">|&gt;</span></span>
-<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">select</span>(<span class="sc">-</span><span class="dv">2</span>, <span class="sc">-</span><span class="dv">6</span>) <span class="sc">|&gt;</span></span>
-<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">rename</span>(<span class="at">Disease_Type =</span> Disease.type, <span class="at">sample_id =</span> ID)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb15"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>karyotype <span class="ot">&lt;-</span> <span class="fu">read_xlsx</span>(<span class="st">"../raw/Karyotype and other variables.xlsx"</span>, <span class="at">col_types =</span> <span class="st">"text"</span>) <span class="sc">|&gt;</span></span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">select</span>(<span class="sc">-</span><span class="dv">2</span>, <span class="sc">-</span><span class="dv">6</span>) <span class="sc">|&gt;</span></span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">rename</span>(<span class="at">Disease_Type =</span> Disease.type, <span class="at">sample_id =</span> ID)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </div>
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb24"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a>beat_aml_metadata <span class="ot">&lt;-</span> meta_beat <span class="sc">|&gt;</span></span>
-<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(labId <span class="sc">%in%</span> expr_beat_aml<span class="sc">$</span>labId) <span class="sc">|&gt;</span></span>
-<span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">relocate</span>(labId) <span class="sc">|&gt;</span></span>
-<span id="cb24-4"><a href="#cb24-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">rename</span>(<span class="at">sample_id =</span> labId) <span class="sc">|&gt;</span></span>
-<span id="cb24-5"><a href="#cb24-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">left_join</span>(</span>
-<span id="cb24-6"><a href="#cb24-6" aria-hidden="true" tabindex="-1"></a>    karyotype <span class="sc">|&gt;</span></span>
-<span id="cb24-7"><a href="#cb24-7" aria-hidden="true" tabindex="-1"></a>      <span class="fu">filter</span>(cohort <span class="sc">==</span> <span class="st">"BEAT-AML"</span>) <span class="sc">|&gt;</span></span>
-<span id="cb24-8"><a href="#cb24-8" aria-hidden="true" tabindex="-1"></a>      <span class="fu">select</span>(sample_id, Patient_Id, Gender, Disease_Type),</span>
-<span id="cb24-9"><a href="#cb24-9" aria-hidden="true" tabindex="-1"></a>    <span class="at">by =</span> <span class="st">"sample_id"</span></span>
-<span id="cb24-10"><a href="#cb24-10" aria-hidden="true" tabindex="-1"></a>  ) <span class="sc">|&gt;</span></span>
-<span id="cb24-11"><a href="#cb24-11" aria-hidden="true" tabindex="-1"></a>  <span class="fu">arrange</span>(<span class="fu">match</span>(sample_id, expr_beat_aml<span class="sc">$</span>labId))</span>
-<span id="cb24-12"><a href="#cb24-12" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb24-13"><a href="#cb24-13" aria-hidden="true" tabindex="-1"></a>tcga_aml_metadata <span class="ot">&lt;-</span> karyotype <span class="sc">|&gt;</span></span>
-<span id="cb24-14"><a href="#cb24-14" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(cohort <span class="sc">==</span> <span class="st">"TCGA"</span>) <span class="sc">|&gt;</span></span>
-<span id="cb24-15"><a href="#cb24-15" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(sample_id <span class="sc">%in%</span> expr_tcga_aml<span class="sc">$</span>sample_id) <span class="sc">|&gt;</span></span>
-<span id="cb24-16"><a href="#cb24-16" aria-hidden="true" tabindex="-1"></a>  <span class="fu">arrange</span>(<span class="fu">match</span>(sample_id, expr_tcga_aml<span class="sc">$</span>sample_id))</span>
-<span id="cb24-17"><a href="#cb24-17" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb24-18"><a href="#cb24-18" aria-hidden="true" tabindex="-1"></a><span class="fu">write_tsv</span>(beat_aml_metadata,  <span class="st">"../processed/beat_aml_metadata.tsv"</span>)</span>
-<span id="cb24-19"><a href="#cb24-19" aria-hidden="true" tabindex="-1"></a><span class="fu">write_tsv</span>(tcga_aml_metadata, <span class="st">"../processed/tcga_aml_metadata.tsv"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb16"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>beat_wes_metadata <span class="ot">&lt;-</span> meta_beat <span class="sc">|&gt;</span></span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(labId <span class="sc">%in%</span> expr_beat_wes<span class="sc">$</span>labId) <span class="sc">|&gt;</span></span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">relocate</span>(labId) <span class="sc">|&gt;</span></span>
+<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">rename</span>(<span class="at">sample_id =</span> labId) <span class="sc">|&gt;</span></span>
+<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">left_join</span>(</span>
+<span id="cb16-6"><a href="#cb16-6" aria-hidden="true" tabindex="-1"></a>    karyotype <span class="sc">|&gt;</span></span>
+<span id="cb16-7"><a href="#cb16-7" aria-hidden="true" tabindex="-1"></a>      <span class="fu">filter</span>(cohort <span class="sc">==</span> <span class="st">"BEAT-AML"</span>) <span class="sc">|&gt;</span></span>
+<span id="cb16-8"><a href="#cb16-8" aria-hidden="true" tabindex="-1"></a>      <span class="fu">select</span>(sample_id, Patient_Id, Gender, Disease_Type),</span>
+<span id="cb16-9"><a href="#cb16-9" aria-hidden="true" tabindex="-1"></a>    <span class="at">by =</span> <span class="st">"sample_id"</span></span>
+<span id="cb16-10"><a href="#cb16-10" aria-hidden="true" tabindex="-1"></a>  ) <span class="sc">|&gt;</span></span>
+<span id="cb16-11"><a href="#cb16-11" aria-hidden="true" tabindex="-1"></a>  <span class="fu">arrange</span>(<span class="fu">match</span>(sample_id, expr_beat_wes<span class="sc">$</span>labId)) <span class="sc">%&gt;%</span></span>
+<span id="cb16-12"><a href="#cb16-12" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">cohort =</span> <span class="st">"BEAT"</span>)</span>
+<span id="cb16-13"><a href="#cb16-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-14"><a href="#cb16-14" aria-hidden="true" tabindex="-1"></a>tcga_wes_metadata <span class="ot">&lt;-</span> karyotype <span class="sc">|&gt;</span></span>
+<span id="cb16-15"><a href="#cb16-15" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(cohort <span class="sc">==</span> <span class="st">"TCGA"</span>) <span class="sc">|&gt;</span></span>
+<span id="cb16-16"><a href="#cb16-16" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(sample_id <span class="sc">%in%</span> expr_tcga_wes<span class="sc">$</span>sample_id) <span class="sc">|&gt;</span></span>
+<span id="cb16-17"><a href="#cb16-17" aria-hidden="true" tabindex="-1"></a>  <span class="fu">arrange</span>(<span class="fu">match</span>(sample_id, expr_tcga_wes<span class="sc">$</span>sample_id))</span>
+<span id="cb16-18"><a href="#cb16-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-19"><a href="#cb16-19" aria-hidden="true" tabindex="-1"></a><span class="fu">write_tsv</span>(beat_wes_metadata,  <span class="st">"../processed/beat_wes_metadata.tsv"</span>)</span>
+<span id="cb16-20"><a href="#cb16-20" aria-hidden="true" tabindex="-1"></a><span class="fu">write_tsv</span>(tcga_wes_metadata, <span class="st">"../processed/tcga_wes_metadata.tsv"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+</section>
+<section id="save-wide-wes-info" class="level2">
+<h2 class="anchored" data-anchor-id="save-wide-wes-info">Save Wide Wes info</h2>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb17"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>map_sample_cohort <span class="ot">&lt;-</span> <span class="fu">bind_rows</span>(beat_wes_metadata, tcga_wes_metadata) <span class="sc">%&gt;%</span></span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">select</span>(sample_id, cohort) </span>
+<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a>wes_wide <span class="ot">&lt;-</span> <span class="fu">left_join</span>(wes_wide, map_sample_cohort, <span class="at">by =</span> <span class="st">"sample_id"</span>) <span class="sc">%&gt;%</span></span>
+<span id="cb17-5"><a href="#cb17-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">relocate</span>(cohort, <span class="at">.after =</span> <span class="st">"sample_id"</span>) <span class="sc">%&gt;%</span></span>
+<span id="cb17-6"><a href="#cb17-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(<span class="sc">!</span><span class="fu">is.na</span>(cohort))</span>
+<span id="cb17-7"><a href="#cb17-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb17-8"><a href="#cb17-8" aria-hidden="true" tabindex="-1"></a><span class="fu">write_tsv</span>(wes_wide,<span class="st">"../../data/processed/wes_wide.tsv"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </div>
 </section>
 <section id="human-gem-metabolic-gene-annotation" class="level2">
 <h2 class="anchored" data-anchor-id="human-gem-metabolic-gene-annotation">Human-GEM: metabolic gene annotation</h2>
 <p>Human-GEM links genes to metabolic subsystems through GPR (gene–protein–reaction) rules encoded as Boolean expressions with Ensembl IDs. We extract a flat gene → subsystem table used downstream to filter expression matrices to metabolic genes before WGCNA.</p>
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb25"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a>gem_genes <span class="ot">&lt;-</span> <span class="fu">read_xlsx</span>(<span class="st">"../raw/Human-GEM.xlsx"</span>, <span class="at">sheet =</span> <span class="st">"GENES"</span>) <span class="sc">|&gt;</span></span>
-<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">select</span>(<span class="at">ensembl_id =</span> NAME, <span class="at">hugo =</span> <span class="st">`</span><span class="at">SHORT NAME</span><span class="st">`</span>)</span>
-<span id="cb25-3"><a href="#cb25-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb25-4"><a href="#cb25-4" aria-hidden="true" tabindex="-1"></a>gem_rxns <span class="ot">&lt;-</span> <span class="fu">read_xlsx</span>(<span class="st">"../raw/Human-GEM.xlsx"</span>, <span class="at">sheet =</span> <span class="st">"RXNS"</span>) <span class="sc">|&gt;</span></span>
-<span id="cb25-5"><a href="#cb25-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">select</span>(<span class="at">reaction_id =</span> ID,</span>
-<span id="cb25-6"><a href="#cb25-6" aria-hidden="true" tabindex="-1"></a>         <span class="at">reaction_name =</span> NAME,</span>
-<span id="cb25-7"><a href="#cb25-7" aria-hidden="true" tabindex="-1"></a>         <span class="at">gene_association =</span> <span class="st">`</span><span class="at">GENE ASSOCIATION</span><span class="st">`</span>,</span>
-<span id="cb25-8"><a href="#cb25-8" aria-hidden="true" tabindex="-1"></a>         <span class="at">subsystem =</span> SUBSYSTEM) <span class="sc">|&gt;</span></span>
-<span id="cb25-9"><a href="#cb25-9" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(<span class="sc">!</span><span class="fu">is.na</span>(gene_association))</span>
-<span id="cb25-10"><a href="#cb25-10" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb25-11"><a href="#cb25-11" aria-hidden="true" tabindex="-1"></a>gem <span class="ot">&lt;-</span> gem_rxns <span class="sc">|&gt;</span></span>
-<span id="cb25-12"><a href="#cb25-12" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">ensembl_id =</span> <span class="fu">str_extract_all</span>(gene_association, <span class="st">"ENSG</span><span class="sc">\\</span><span class="st">d+"</span>)) <span class="sc">|&gt;</span></span>
-<span id="cb25-13"><a href="#cb25-13" aria-hidden="true" tabindex="-1"></a>  <span class="fu">unnest</span>(ensembl_id) <span class="sc">|&gt;</span></span>
-<span id="cb25-14"><a href="#cb25-14" aria-hidden="true" tabindex="-1"></a>  <span class="fu">left_join</span>(gem_genes, <span class="at">by =</span> <span class="st">"ensembl_id"</span>) <span class="sc">|&gt;</span></span>
-<span id="cb25-15"><a href="#cb25-15" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(<span class="sc">!</span><span class="fu">is.na</span>(hugo)) <span class="sc">|&gt;</span></span>
-<span id="cb25-16"><a href="#cb25-16" aria-hidden="true" tabindex="-1"></a>  <span class="fu">select</span>(hugo, ensembl_id, reaction_id, reaction_name, subsystem) <span class="sc">|&gt;</span></span>
-<span id="cb25-17"><a href="#cb25-17" aria-hidden="true" tabindex="-1"></a>  <span class="fu">distinct</span>()</span>
-<span id="cb25-18"><a href="#cb25-18" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb25-19"><a href="#cb25-19" aria-hidden="true" tabindex="-1"></a>gem_by_gene <span class="ot">&lt;-</span> gem <span class="sc">|&gt;</span></span>
-<span id="cb25-20"><a href="#cb25-20" aria-hidden="true" tabindex="-1"></a>  <span class="fu">group_by</span>(hugo, ensembl_id) <span class="sc">|&gt;</span></span>
-<span id="cb25-21"><a href="#cb25-21" aria-hidden="true" tabindex="-1"></a>  <span class="fu">summarise</span>(</span>
-<span id="cb25-22"><a href="#cb25-22" aria-hidden="true" tabindex="-1"></a>    <span class="at">n_reactions  =</span> <span class="fu">n</span>(),</span>
-<span id="cb25-23"><a href="#cb25-23" aria-hidden="true" tabindex="-1"></a>    <span class="at">n_subsystems =</span> <span class="fu">n_distinct</span>(subsystem),</span>
-<span id="cb25-24"><a href="#cb25-24" aria-hidden="true" tabindex="-1"></a>    <span class="at">subsystems   =</span> <span class="fu">paste</span>(<span class="fu">unique</span>(subsystem), <span class="at">collapse =</span> <span class="st">";"</span>),</span>
-<span id="cb25-25"><a href="#cb25-25" aria-hidden="true" tabindex="-1"></a>    <span class="at">reactions    =</span> <span class="fu">paste</span>(<span class="fu">unique</span>(reaction_id), <span class="at">collapse =</span> <span class="st">";"</span>),</span>
-<span id="cb25-26"><a href="#cb25-26" aria-hidden="true" tabindex="-1"></a>    <span class="at">.groups =</span> <span class="st">"drop"</span></span>
-<span id="cb25-27"><a href="#cb25-27" aria-hidden="true" tabindex="-1"></a>  )</span>
-<span id="cb25-28"><a href="#cb25-28" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb25-29"><a href="#cb25-29" aria-hidden="true" tabindex="-1"></a><span class="fu">write_tsv</span>(gem_by_gene, <span class="st">"../processed/gem_gene_subsystems.tsv"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb18"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="fu">local</span>({</span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>  gem_genes <span class="ot">&lt;-</span> <span class="fu">read_xlsx</span>(<span class="st">"../raw/Human-GEM.xlsx"</span>, <span class="at">sheet =</span> <span class="st">"GENES"</span>) <span class="sc">|&gt;</span></span>
+<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a>    <span class="fu">select</span>(</span>
+<span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a>      <span class="at">ensembl_id =</span> NAME,</span>
+<span id="cb18-6"><a href="#cb18-6" aria-hidden="true" tabindex="-1"></a>      <span class="at">hugo =</span> <span class="st">`</span><span class="at">SHORT NAME</span><span class="st">`</span></span>
+<span id="cb18-7"><a href="#cb18-7" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb18-8"><a href="#cb18-8" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb18-9"><a href="#cb18-9" aria-hidden="true" tabindex="-1"></a>  gem_genes_official <span class="ot">&lt;-</span> <span class="fu">read_tsv</span>(</span>
+<span id="cb18-10"><a href="#cb18-10" aria-hidden="true" tabindex="-1"></a>    <span class="st">"../raw/Human-GEM-official.tsv"</span>,</span>
+<span id="cb18-11"><a href="#cb18-11" aria-hidden="true" tabindex="-1"></a>    <span class="at">show_col_types =</span> <span class="cn">FALSE</span></span>
+<span id="cb18-12"><a href="#cb18-12" aria-hidden="true" tabindex="-1"></a>  ) <span class="sc">|&gt;</span></span>
+<span id="cb18-13"><a href="#cb18-13" aria-hidden="true" tabindex="-1"></a>    <span class="fu">select</span>(</span>
+<span id="cb18-14"><a href="#cb18-14" aria-hidden="true" tabindex="-1"></a>      <span class="at">ensembl_id  =</span> genes,</span>
+<span id="cb18-15"><a href="#cb18-15" aria-hidden="true" tabindex="-1"></a>      <span class="at">gene_name   =</span> geneNames,</span>
+<span id="cb18-16"><a href="#cb18-16" aria-hidden="true" tabindex="-1"></a>      <span class="at">uniprot     =</span> geneUniProtID,</span>
+<span id="cb18-17"><a href="#cb18-17" aria-hidden="true" tabindex="-1"></a>      <span class="at">compartment =</span> compartments</span>
+<span id="cb18-18"><a href="#cb18-18" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb18-19"><a href="#cb18-19" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb18-20"><a href="#cb18-20" aria-hidden="true" tabindex="-1"></a>  gem_rxns <span class="ot">&lt;-</span> <span class="fu">read_xlsx</span>(<span class="st">"../raw/Human-GEM.xlsx"</span>, <span class="at">sheet =</span> <span class="st">"RXNS"</span>) <span class="sc">|&gt;</span></span>
+<span id="cb18-21"><a href="#cb18-21" aria-hidden="true" tabindex="-1"></a>    <span class="fu">select</span>(</span>
+<span id="cb18-22"><a href="#cb18-22" aria-hidden="true" tabindex="-1"></a>      <span class="at">reaction_id      =</span> ID,</span>
+<span id="cb18-23"><a href="#cb18-23" aria-hidden="true" tabindex="-1"></a>      <span class="at">reaction_name    =</span> NAME,</span>
+<span id="cb18-24"><a href="#cb18-24" aria-hidden="true" tabindex="-1"></a>      <span class="at">gene_association =</span> <span class="st">`</span><span class="at">GENE ASSOCIATION</span><span class="st">`</span>,</span>
+<span id="cb18-25"><a href="#cb18-25" aria-hidden="true" tabindex="-1"></a>      <span class="at">subsystem        =</span> SUBSYSTEM</span>
+<span id="cb18-26"><a href="#cb18-26" aria-hidden="true" tabindex="-1"></a>    ) <span class="sc">|&gt;</span></span>
+<span id="cb18-27"><a href="#cb18-27" aria-hidden="true" tabindex="-1"></a>    <span class="fu">filter</span>(<span class="sc">!</span><span class="fu">is.na</span>(gene_association))</span>
+<span id="cb18-28"><a href="#cb18-28" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb18-29"><a href="#cb18-29" aria-hidden="true" tabindex="-1"></a>  pathway_map <span class="ot">&lt;-</span> <span class="fu">tribble</span>(</span>
+<span id="cb18-30"><a href="#cb18-30" aria-hidden="true" tabindex="-1"></a>    <span class="sc">~</span>subsystem, <span class="sc">~</span>pathway_class,</span>
+<span id="cb18-31"><a href="#cb18-31" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Glycolysis / Gluconeogenesis"</span>,                                      <span class="st">"Carbohydrate metabolism"</span>,</span>
+<span id="cb18-32"><a href="#cb18-32" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Starch and sucrose metabolism"</span>,                                      <span class="st">"Carbohydrate metabolism"</span>,</span>
+<span id="cb18-33"><a href="#cb18-33" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Galactose metabolism"</span>,                                               <span class="st">"Carbohydrate metabolism"</span>,</span>
+<span id="cb18-34"><a href="#cb18-34" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Fructose and mannose metabolism"</span>,                                    <span class="st">"Carbohydrate metabolism"</span>,</span>
+<span id="cb18-35"><a href="#cb18-35" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Pentose and glucuronate interconversions"</span>,                           <span class="st">"Carbohydrate metabolism"</span>,</span>
+<span id="cb18-36"><a href="#cb18-36" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Pyruvate metabolism"</span>,                                                <span class="st">"Carbohydrate metabolism"</span>,</span>
+<span id="cb18-37"><a href="#cb18-37" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Propanoate metabolism"</span>,                                              <span class="st">"Carbohydrate metabolism"</span>,</span>
+<span id="cb18-38"><a href="#cb18-38" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Butanoate metabolism"</span>,                                               <span class="st">"Carbohydrate metabolism"</span>,</span>
+<span id="cb18-39"><a href="#cb18-39" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Pentose phosphate pathway"</span>,                                          <span class="st">"Carbohydrate metabolism"</span>,</span>
+<span id="cb18-40"><a href="#cb18-40" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Pentose Phosphate Pathway"</span>,                                          <span class="st">"Carbohydrate metabolism"</span>,</span>
+<span id="cb18-41"><a href="#cb18-41" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Tricarboxylic acid cycle and glyoxylate/dicarboxylate metabolism"</span>,   <span class="st">"Carbohydrate metabolism"</span>,</span>
+<span id="cb18-42"><a href="#cb18-42" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Glyoxylate and dicarboxylate metabolism"</span>,                           <span class="st">"Carbohydrate metabolism"</span>,</span>
+<span id="cb18-43"><a href="#cb18-43" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Purine metabolism"</span>,                                                  <span class="st">"Nucleotide metabolism"</span>,</span>
+<span id="cb18-44"><a href="#cb18-44" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Pyrimidine metabolism"</span>,                                              <span class="st">"Nucleotide metabolism"</span>,</span>
+<span id="cb18-45"><a href="#cb18-45" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Nucleotide metabolism"</span>,                                              <span class="st">"Nucleotide metabolism"</span>,</span>
+<span id="cb18-46"><a href="#cb18-46" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Aminoacyl-tRNA biosynthesis"</span>,                                        <span class="st">"Nucleotide metabolism"</span>,</span>
+<span id="cb18-47"><a href="#cb18-47" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Alanine, aspartate and glutamate metabolism"</span>,                        <span class="st">"Amino acid metabolism"</span>,</span>
+<span id="cb18-48"><a href="#cb18-48" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Arginine and proline metabolism"</span>,                                    <span class="st">"Amino acid metabolism"</span>,</span>
+<span id="cb18-49"><a href="#cb18-49" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Histidine metabolism"</span>,                                               <span class="st">"Amino acid metabolism"</span>,</span>
+<span id="cb18-50"><a href="#cb18-50" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Glycine, serine and threonine metabolism"</span>,                           <span class="st">"Amino acid metabolism"</span>,</span>
+<span id="cb18-51"><a href="#cb18-51" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Lysine metabolism"</span>,                                                  <span class="st">"Amino acid metabolism"</span>,</span>
+<span id="cb18-52"><a href="#cb18-52" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Tryptophan metabolism"</span>,                                              <span class="st">"Amino acid metabolism"</span>,</span>
+<span id="cb18-53"><a href="#cb18-53" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Tyrosine metabolism"</span>,                                                <span class="st">"Amino acid metabolism"</span>,</span>
+<span id="cb18-54"><a href="#cb18-54" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Valine, leucine, and isoleucine metabolism"</span>,                         <span class="st">"Amino acid metabolism"</span>,</span>
+<span id="cb18-55"><a href="#cb18-55" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Phenylalanine, tyrosine and tryptophan biosynthesis"</span>,                <span class="st">"Amino acid metabolism"</span>,</span>
+<span id="cb18-56"><a href="#cb18-56" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Cysteine and methionine metabolism"</span>,                                 <span class="st">"Amino acid metabolism"</span>,</span>
+<span id="cb18-57"><a href="#cb18-57" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Glutathione metabolism"</span>,                                             <span class="st">"Amino acid metabolism"</span>,</span>
+<span id="cb18-58"><a href="#cb18-58" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Beta-alanine metabolism"</span>,                                            <span class="st">"Amino acid metabolism"</span>,</span>
+<span id="cb18-59"><a href="#cb18-59" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Metabolism of other amino acids"</span>,                                    <span class="st">"Amino acid metabolism"</span>,</span>
+<span id="cb18-60"><a href="#cb18-60" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Phenylalanine metabolism"</span>,                                           <span class="st">"Amino acid metabolism"</span>,</span>
+<span id="cb18-61"><a href="#cb18-61" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Urea cycle"</span>,                                                         <span class="st">"Amino acid metabolism"</span>,</span>
+<span id="cb18-62"><a href="#cb18-62" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Sulfur metabolism"</span>,                                                  <span class="st">"Amino acid metabolism"</span>,</span>
+<span id="cb18-63"><a href="#cb18-63" aria-hidden="true" tabindex="-1"></a>    <span class="st">"C5-branched dibasic acid metabolism"</span>,                                <span class="st">"Amino acid metabolism"</span>,</span>
+<span id="cb18-64"><a href="#cb18-64" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Serotonin and melatonin biosynthesis"</span>,                               <span class="st">"Amino acid metabolism"</span>,</span>
+<span id="cb18-65"><a href="#cb18-65" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Fatty acid activation (cytosolic)"</span>,                                  <span class="st">"Lipid metabolism"</span>,</span>
+<span id="cb18-66"><a href="#cb18-66" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Fatty acid activation (endoplasmic reticular)"</span>,                      <span class="st">"Lipid metabolism"</span>,</span>
+<span id="cb18-67"><a href="#cb18-67" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Fatty acid biosynthesis (even-chain)"</span>,                               <span class="st">"Lipid metabolism"</span>,</span>
+<span id="cb18-68"><a href="#cb18-68" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Fatty acid biosynthesis (odd-chain)"</span>,                                <span class="st">"Lipid metabolism"</span>,</span>
+<span id="cb18-69"><a href="#cb18-69" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Fatty acid biosynthesis (unsaturated)"</span>,                              <span class="st">"Lipid metabolism"</span>,</span>
+<span id="cb18-70"><a href="#cb18-70" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Fatty acid elongation (even-chain)"</span>,                                 <span class="st">"Lipid metabolism"</span>,</span>
+<span id="cb18-71"><a href="#cb18-71" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Fatty acid elongation (odd-chain)"</span>,                                  <span class="st">"Lipid metabolism"</span>,</span>
+<span id="cb18-72"><a href="#cb18-72" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Fatty acid desaturation (even-chain)"</span>,                               <span class="st">"Lipid metabolism"</span>,</span>
+<span id="cb18-73"><a href="#cb18-73" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Fatty acid desaturation (odd-chain)"</span>,                                <span class="st">"Lipid metabolism"</span>,</span>
+<span id="cb18-74"><a href="#cb18-74" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Fatty acid biosynthesis"</span>,                                            <span class="st">"Lipid metabolism"</span>,</span>
+<span id="cb18-75"><a href="#cb18-75" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Fatty acid oxidation"</span>,                                               <span class="st">"Lipid metabolism"</span>,</span>
+<span id="cb18-76"><a href="#cb18-76" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Fatty acid degradation"</span>,                                             <span class="st">"Lipid metabolism"</span>,</span>
+<span id="cb18-77"><a href="#cb18-77" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Fatty acid metabolism"</span>,                                              <span class="st">"Lipid metabolism"</span>,</span>
+<span id="cb18-78"><a href="#cb18-78" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Linoleate metabolism"</span>,                                               <span class="st">"Lipid metabolism"</span>,</span>
+<span id="cb18-79"><a href="#cb18-79" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Lipoic acid metabolism"</span>,                                             <span class="st">"Lipid metabolism"</span>,</span>
+<span id="cb18-80"><a href="#cb18-80" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Omega-3 fatty acid metabolism"</span>,                                      <span class="st">"Lipid metabolism"</span>,</span>
+<span id="cb18-81"><a href="#cb18-81" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Omega-6 fatty acid metabolism"</span>,                                      <span class="st">"Lipid metabolism"</span>,</span>
+<span id="cb18-82"><a href="#cb18-82" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Arachidonic acid metabolism"</span>,                                        <span class="st">"Lipid metabolism"</span>,</span>
+<span id="cb18-83"><a href="#cb18-83" aria-hidden="true" tabindex="-1"></a>    <span class="st">"</span><span class="sc">\t</span><span class="st">Arachidonic acid metabolism"</span>,                                       <span class="st">"Lipid metabolism"</span>,</span>
+<span id="cb18-84"><a href="#cb18-84" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Leukotriene metabolism"</span>,                                             <span class="st">"Lipid metabolism"</span>,</span>
+<span id="cb18-85"><a href="#cb18-85" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Eicosanoid metabolism"</span>,                                              <span class="st">"Lipid metabolism"</span>,</span>
+<span id="cb18-86"><a href="#cb18-86" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Acyl-CoA hydrolysis"</span>,                                                <span class="st">"Lipid metabolism"</span>,</span>
+<span id="cb18-87"><a href="#cb18-87" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Carnitine shuttle (cytosolic)"</span>,                                      <span class="st">"Lipid metabolism"</span>,</span>
+<span id="cb18-88"><a href="#cb18-88" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Carnitine shuttle (mitochondrial)"</span>,                                  <span class="st">"Lipid metabolism"</span>,</span>
+<span id="cb18-89"><a href="#cb18-89" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Carnitine shuttle (peroxisomal)"</span>,                                    <span class="st">"Lipid metabolism"</span>,</span>
+<span id="cb18-90"><a href="#cb18-90" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Carnitine shuttle (endoplasmic reticular)"</span>,                          <span class="st">"Lipid metabolism"</span>,</span>
+<span id="cb18-91"><a href="#cb18-91" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Acylglycerides metabolism"</span>,                                          <span class="st">"Lipid metabolism"</span>,</span>
+<span id="cb18-92"><a href="#cb18-92" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Beta oxidation of even-chain fatty acids (peroxisomal)"</span>,             <span class="st">"Lipid metabolism"</span>,</span>
+<span id="cb18-93"><a href="#cb18-93" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Beta oxidation of odd-chain fatty acids (peroxisomal)"</span>,              <span class="st">"Lipid metabolism"</span>,</span>
+<span id="cb18-94"><a href="#cb18-94" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Beta oxidation of unsaturated fatty acids (n-9) (peroxisomal)"</span>,      <span class="st">"Lipid metabolism"</span>,</span>
+<span id="cb18-95"><a href="#cb18-95" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Beta oxidation of phytanic acid (peroxisomal)"</span>,                      <span class="st">"Lipid metabolism"</span>,</span>
+<span id="cb18-96"><a href="#cb18-96" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Beta oxidation of di-unsaturated fatty acids (n-6) (peroxisomal)"</span>,   <span class="st">"Lipid metabolism"</span>,</span>
+<span id="cb18-97"><a href="#cb18-97" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Beta oxidation of even-chain fatty acids (mitochondrial)"</span>,           <span class="st">"Lipid metabolism"</span>,</span>
+<span id="cb18-98"><a href="#cb18-98" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Beta oxidation of odd-chain fatty acids (mitochondrial)"</span>,            <span class="st">"Lipid metabolism"</span>,</span>
+<span id="cb18-99"><a href="#cb18-99" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Beta oxidation of unsaturated fatty acids (n-7) (mitochondrial)"</span>,    <span class="st">"Lipid metabolism"</span>,</span>
+<span id="cb18-100"><a href="#cb18-100" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Beta oxidation of unsaturated fatty acids (n-7) (peroxisomal)"</span>,      <span class="st">"Lipid metabolism"</span>,</span>
+<span id="cb18-101"><a href="#cb18-101" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Beta oxidation of unsaturated fatty acids (n-9) (mitochondrial)"</span>,    <span class="st">"Lipid metabolism"</span>,</span>
+<span id="cb18-102"><a href="#cb18-102" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Beta oxidation of di-unsaturated fatty acids (n-6) (mitochondrial)"</span>, <span class="st">"Lipid metabolism"</span>,</span>
+<span id="cb18-103"><a href="#cb18-103" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Beta oxidation of poly-unsaturated fatty acids (mitochondrial)"</span>,     <span class="st">"Lipid metabolism"</span>,</span>
+<span id="cb18-104"><a href="#cb18-104" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Beta oxidation of branched-chain fatty acids (mitochondrial)"</span>,       <span class="st">"Lipid metabolism"</span>,</span>
+<span id="cb18-105"><a href="#cb18-105" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Terpenoid backbone biosynthesis"</span>,                                    <span class="st">"Lipid metabolism"</span>,</span>
+<span id="cb18-106"><a href="#cb18-106" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Steroid metabolism"</span>,                                                 <span class="st">"Lipid metabolism"</span>,</span>
+<span id="cb18-107"><a href="#cb18-107" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Androgen metabolism"</span>,                                                <span class="st">"Lipid metabolism"</span>,</span>
+<span id="cb18-108"><a href="#cb18-108" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Cholesterol biosynthesis 1 (Bloch pathway)"</span>,                         <span class="st">"Lipid metabolism"</span>,</span>
+<span id="cb18-109"><a href="#cb18-109" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Cholesterol biosynthesis 2"</span>,                                         <span class="st">"Lipid metabolism"</span>,</span>
+<span id="cb18-110"><a href="#cb18-110" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Cholesterol biosynthesis 3 (Kandustch-Russell pathway)"</span>,             <span class="st">"Lipid metabolism"</span>,</span>
+<span id="cb18-111"><a href="#cb18-111" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Cholesterol metabolism"</span>,                                             <span class="st">"Lipid metabolism"</span>,</span>
+<span id="cb18-112"><a href="#cb18-112" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Estrogen metabolism"</span>,                                                <span class="st">"Lipid metabolism"</span>,</span>
+<span id="cb18-113"><a href="#cb18-113" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Formation and hydrolysis of cholesterol esters"</span>,                     <span class="st">"Lipid metabolism"</span>,</span>
+<span id="cb18-114"><a href="#cb18-114" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Sphingolipid metabolism"</span>,                                            <span class="st">"Lipid metabolism"</span>,</span>
+<span id="cb18-115"><a href="#cb18-115" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Glycerolipid metabolism"</span>,                                            <span class="st">"Lipid metabolism"</span>,</span>
+<span id="cb18-116"><a href="#cb18-116" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Glycerophospholipid metabolism"</span>,                                     <span class="st">"Lipid metabolism"</span>,</span>
+<span id="cb18-117"><a href="#cb18-117" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Glucocorticoid biosynthesis"</span>,                                        <span class="st">"Lipid metabolism"</span>,</span>
+<span id="cb18-118"><a href="#cb18-118" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Prostaglandin biosynthesis"</span>,                                         <span class="st">"Lipid metabolism"</span>,</span>
+<span id="cb18-119"><a href="#cb18-119" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Ether lipid metabolism"</span>,                                             <span class="st">"Lipid metabolism"</span>,</span>
+<span id="cb18-120"><a href="#cb18-120" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Bile acid biosynthesis"</span>,                                             <span class="st">"Lipid metabolism"</span>,</span>
+<span id="cb18-121"><a href="#cb18-121" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Bile acid recycling"</span>,                                                <span class="st">"Lipid metabolism"</span>,</span>
+<span id="cb18-122"><a href="#cb18-122" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Triacylglycerol synthesis"</span>,                                          <span class="st">"Lipid metabolism"</span>,</span>
+<span id="cb18-123"><a href="#cb18-123" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Inositol phosphate metabolism"</span>,                                      <span class="st">"Lipid metabolism"</span>,</span>
+<span id="cb18-124"><a href="#cb18-124" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Phosphatidylinositol phosphate metabolism"</span>,                          <span class="st">"Lipid metabolism"</span>,</span>
+<span id="cb18-125"><a href="#cb18-125" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Oxidative phosphorylation"</span>,                                          <span class="st">"Energy metabolism"</span>,</span>
+<span id="cb18-126"><a href="#cb18-126" aria-hidden="true" tabindex="-1"></a>    <span class="st">"ROS detoxification"</span>,                                                 <span class="st">"Energy metabolism"</span>,</span>
+<span id="cb18-127"><a href="#cb18-127" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Ubiquinone synthesis"</span>,                                               <span class="st">"Energy metabolism"</span>,</span>
+<span id="cb18-128"><a href="#cb18-128" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Ubiquinone and other terpenoid-quinone biosynthesis"</span>,                <span class="st">"Energy metabolism"</span>,</span>
+<span id="cb18-129"><a href="#cb18-129" aria-hidden="true" tabindex="-1"></a>    <span class="st">"O-glycan metabolism"</span>,                                                <span class="st">"Glycan metabolism"</span>,</span>
+<span id="cb18-130"><a href="#cb18-130" aria-hidden="true" tabindex="-1"></a>    <span class="st">"N-glycan metabolism"</span>,                                                <span class="st">"Glycan metabolism"</span>,</span>
+<span id="cb18-131"><a href="#cb18-131" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Amino sugar and nucleotide sugar metabolism"</span>,                        <span class="st">"Glycan metabolism"</span>,</span>
+<span id="cb18-132"><a href="#cb18-132" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Glycosphingolipid biosynthesis-ganglio series"</span>,                      <span class="st">"Glycan metabolism"</span>,</span>
+<span id="cb18-133"><a href="#cb18-133" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Glycosphingolipid biosynthesis-globo series"</span>,                        <span class="st">"Glycan metabolism"</span>,</span>
+<span id="cb18-134"><a href="#cb18-134" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Glycosphingolipid biosynthesis-lacto and neolacto series"</span>,           <span class="st">"Glycan metabolism"</span>,</span>
+<span id="cb18-135"><a href="#cb18-135" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Glycosphingolipid metabolism"</span>,                                       <span class="st">"Glycan metabolism"</span>,</span>
+<span id="cb18-136"><a href="#cb18-136" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Glycosylphosphatidylinositol (GPI)-anchor biosynthesis"</span>,             <span class="st">"Glycan metabolism"</span>,</span>
+<span id="cb18-137"><a href="#cb18-137" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Chondroitin / heparan sulfate biosynthesis"</span>,                         <span class="st">"Glycan metabolism"</span>,</span>
+<span id="cb18-138"><a href="#cb18-138" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Chondroitin sulfate degradation"</span>,                                    <span class="st">"Glycan metabolism"</span>,</span>
+<span id="cb18-139"><a href="#cb18-139" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Heparan sulfate degradation"</span>,                                        <span class="st">"Glycan metabolism"</span>,</span>
+<span id="cb18-140"><a href="#cb18-140" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Keratan sulfate biosynthesis"</span>,                                       <span class="st">"Glycan metabolism"</span>,</span>
+<span id="cb18-141"><a href="#cb18-141" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Keratan sulfate degradation"</span>,                                        <span class="st">"Glycan metabolism"</span>,</span>
+<span id="cb18-142"><a href="#cb18-142" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Blood group biosynthesis"</span>,                                           <span class="st">"Glycan metabolism"</span>,</span>
+<span id="cb18-143"><a href="#cb18-143" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Nicotinate and nicotinamide metabolism"</span>,                             <span class="st">"Vitamin and cofactor metabolism"</span>,</span>
+<span id="cb18-144"><a href="#cb18-144" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Pantothenate and CoA metabolism"</span>,                                    <span class="st">"Vitamin and cofactor metabolism"</span>,</span>
+<span id="cb18-145"><a href="#cb18-145" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Folate metabolism"</span>,                                                  <span class="st">"Vitamin and cofactor metabolism"</span>,</span>
+<span id="cb18-146"><a href="#cb18-146" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Biotin metabolism"</span>,                                                  <span class="st">"Vitamin and cofactor metabolism"</span>,</span>
+<span id="cb18-147"><a href="#cb18-147" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Biopterin metabolism"</span>,                                               <span class="st">"Vitamin and cofactor metabolism"</span>,</span>
+<span id="cb18-148"><a href="#cb18-148" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Ascorbate and aldarate metabolism"</span>,                                  <span class="st">"Vitamin and cofactor metabolism"</span>,</span>
+<span id="cb18-149"><a href="#cb18-149" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Porphyrin metabolism"</span>,                                               <span class="st">"Vitamin and cofactor metabolism"</span>,</span>
+<span id="cb18-150"><a href="#cb18-150" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Retinol metabolism"</span>,                                                 <span class="st">"Vitamin and cofactor metabolism"</span>,</span>
+<span id="cb18-151"><a href="#cb18-151" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Riboflavin metabolism"</span>,                                              <span class="st">"Vitamin and cofactor metabolism"</span>,</span>
+<span id="cb18-152"><a href="#cb18-152" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Thiamine metabolism"</span>,                                                <span class="st">"Vitamin and cofactor metabolism"</span>,</span>
+<span id="cb18-153"><a href="#cb18-153" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Vitamin B12 metabolism"</span>,                                             <span class="st">"Vitamin and cofactor metabolism"</span>,</span>
+<span id="cb18-154"><a href="#cb18-154" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Vitamin B6 metabolism"</span>,                                              <span class="st">"Vitamin and cofactor metabolism"</span>,</span>
+<span id="cb18-155"><a href="#cb18-155" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Vitamin D metabolism"</span>,                                               <span class="st">"Vitamin and cofactor metabolism"</span>,</span>
+<span id="cb18-156"><a href="#cb18-156" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Vitamin E metabolism"</span>,                                               <span class="st">"Vitamin and cofactor metabolism"</span>,</span>
+<span id="cb18-157"><a href="#cb18-157" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Vitamin C metabolism"</span>,                                               <span class="st">"Vitamin and cofactor metabolism"</span>,</span>
+<span id="cb18-158"><a href="#cb18-158" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Vitamin A metabolism"</span>,                                               <span class="st">"Vitamin and cofactor metabolism"</span>,</span>
+<span id="cb18-159"><a href="#cb18-159" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Vitamin B2 metabolism"</span>,                                              <span class="st">"Vitamin and cofactor metabolism"</span>,</span>
+<span id="cb18-160"><a href="#cb18-160" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Heme degradation"</span>,                                                   <span class="st">"Vitamin and cofactor metabolism"</span>,</span>
+<span id="cb18-161"><a href="#cb18-161" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Protein assembly"</span>,                                                   <span class="st">"Protein metabolism"</span>,</span>
+<span id="cb18-162"><a href="#cb18-162" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Protein modification"</span>,                                               <span class="st">"Protein metabolism"</span>,</span>
+<span id="cb18-163"><a href="#cb18-163" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Protein degradation"</span>,                                                <span class="st">"Protein metabolism"</span>,</span>
+<span id="cb18-164"><a href="#cb18-164" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Peptide metabolism"</span>,                                                 <span class="st">"Protein metabolism"</span>,</span>
+<span id="cb18-165"><a href="#cb18-165" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Transport reactions"</span>,                                                <span class="st">"Transport"</span>,</span>
+<span id="cb18-166"><a href="#cb18-166" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Exchange/demand reactions"</span>,                                          <span class="st">"Transport"</span>,</span>
+<span id="cb18-167"><a href="#cb18-167" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Xenobiotics metabolism"</span>,                                             <span class="st">"Xenobiotics"</span>,</span>
+<span id="cb18-168"><a href="#cb18-168" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Drug metabolism"</span>,                                                    <span class="st">"Xenobiotics"</span>,</span>
+<span id="cb18-169"><a href="#cb18-169" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Toluene degradation"</span>,                                                <span class="st">"Xenobiotics"</span>,</span>
+<span id="cb18-170"><a href="#cb18-170" aria-hidden="true" tabindex="-1"></a>    <span class="st">"octane oxidation"</span>,                                                   <span class="st">"Xenobiotics"</span>,</span>
+<span id="cb18-171"><a href="#cb18-171" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Alkaloids biosynthesis"</span>,                                             <span class="st">"Xenobiotics"</span>,</span>
+<span id="cb18-172"><a href="#cb18-172" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Hippurate metabolism"</span>,                                               <span class="st">"Xenobiotics"</span>,</span>
+<span id="cb18-173"><a href="#cb18-173" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Insect hormone biosynthesis"</span>,                                        <span class="st">"Xenobiotics"</span>,</span>
+<span id="cb18-174"><a href="#cb18-174" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Dietary fiber binding"</span>,                                              <span class="st">"Xenobiotics"</span>,</span>
+<span id="cb18-175"><a href="#cb18-175" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Miscellaneous"</span>,                                                      <span class="st">"Other"</span>,</span>
+<span id="cb18-176"><a href="#cb18-176" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Isolated"</span>,                                                           <span class="st">"Other"</span>,</span>
+<span id="cb18-177"><a href="#cb18-177" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Pool reactions"</span>,                                                     <span class="st">"Other"</span>,</span>
+<span id="cb18-178"><a href="#cb18-178" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Artificial reactions"</span>,                                               <span class="st">"Other"</span>,</span>
+<span id="cb18-179"><a href="#cb18-179" aria-hidden="true" tabindex="-1"></a>    <span class="st">"non_metabolic"</span>,                                                      <span class="st">"non_metabolic"</span></span>
+<span id="cb18-180"><a href="#cb18-180" aria-hidden="true" tabindex="-1"></a>  )</span>
+<span id="cb18-181"><a href="#cb18-181" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb18-182"><a href="#cb18-182" aria-hidden="true" tabindex="-1"></a>  gem_long <span class="ot">&lt;-</span> gem_rxns <span class="sc">|&gt;</span></span>
+<span id="cb18-183"><a href="#cb18-183" aria-hidden="true" tabindex="-1"></a>    <span class="fu">mutate</span>(<span class="at">ensembl_id =</span> <span class="fu">str_extract_all</span>(gene_association, <span class="st">"ENSG</span><span class="sc">\\</span><span class="st">d+"</span>)) <span class="sc">|&gt;</span></span>
+<span id="cb18-184"><a href="#cb18-184" aria-hidden="true" tabindex="-1"></a>    <span class="fu">unnest</span>(ensembl_id) <span class="sc">|&gt;</span></span>
+<span id="cb18-185"><a href="#cb18-185" aria-hidden="true" tabindex="-1"></a>    <span class="fu">left_join</span>(gem_genes,          <span class="at">by =</span> <span class="st">"ensembl_id"</span>) <span class="sc">|&gt;</span></span>
+<span id="cb18-186"><a href="#cb18-186" aria-hidden="true" tabindex="-1"></a>    <span class="fu">left_join</span>(gem_genes_official, <span class="at">by =</span> <span class="st">"ensembl_id"</span>) <span class="sc">|&gt;</span></span>
+<span id="cb18-187"><a href="#cb18-187" aria-hidden="true" tabindex="-1"></a>    <span class="fu">left_join</span>(pathway_map,        <span class="at">by =</span> <span class="st">"subsystem"</span>) <span class="sc">|&gt;</span></span>
+<span id="cb18-188"><a href="#cb18-188" aria-hidden="true" tabindex="-1"></a>    <span class="fu">filter</span>(<span class="sc">!</span><span class="fu">is.na</span>(hugo)) <span class="sc">|&gt;</span></span>
+<span id="cb18-189"><a href="#cb18-189" aria-hidden="true" tabindex="-1"></a>    <span class="fu">select</span>(</span>
+<span id="cb18-190"><a href="#cb18-190" aria-hidden="true" tabindex="-1"></a>      hugo,</span>
+<span id="cb18-191"><a href="#cb18-191" aria-hidden="true" tabindex="-1"></a>      ensembl_id,</span>
+<span id="cb18-192"><a href="#cb18-192" aria-hidden="true" tabindex="-1"></a>      gene_name,</span>
+<span id="cb18-193"><a href="#cb18-193" aria-hidden="true" tabindex="-1"></a>      uniprot,</span>
+<span id="cb18-194"><a href="#cb18-194" aria-hidden="true" tabindex="-1"></a>      compartment,</span>
+<span id="cb18-195"><a href="#cb18-195" aria-hidden="true" tabindex="-1"></a>      reaction_id,</span>
+<span id="cb18-196"><a href="#cb18-196" aria-hidden="true" tabindex="-1"></a>      reaction_name,</span>
+<span id="cb18-197"><a href="#cb18-197" aria-hidden="true" tabindex="-1"></a>      subsystem,</span>
+<span id="cb18-198"><a href="#cb18-198" aria-hidden="true" tabindex="-1"></a>      pathway_class</span>
+<span id="cb18-199"><a href="#cb18-199" aria-hidden="true" tabindex="-1"></a>    ) <span class="sc">|&gt;</span></span>
+<span id="cb18-200"><a href="#cb18-200" aria-hidden="true" tabindex="-1"></a>    <span class="fu">distinct</span>()</span>
+<span id="cb18-201"><a href="#cb18-201" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb18-202"><a href="#cb18-202" aria-hidden="true" tabindex="-1"></a>  gem_by_gene <span class="ot">&lt;&lt;-</span> gem_long <span class="sc">|&gt;</span></span>
+<span id="cb18-203"><a href="#cb18-203" aria-hidden="true" tabindex="-1"></a>    <span class="fu">group_by</span>(hugo, ensembl_id, gene_name, uniprot, compartment) <span class="sc">|&gt;</span></span>
+<span id="cb18-204"><a href="#cb18-204" aria-hidden="true" tabindex="-1"></a>    <span class="fu">summarise</span>(</span>
+<span id="cb18-205"><a href="#cb18-205" aria-hidden="true" tabindex="-1"></a>      <span class="at">n_reactions   =</span> <span class="fu">n_distinct</span>(reaction_id),</span>
+<span id="cb18-206"><a href="#cb18-206" aria-hidden="true" tabindex="-1"></a>      <span class="at">n_subsystems  =</span> <span class="fu">n_distinct</span>(subsystem),</span>
+<span id="cb18-207"><a href="#cb18-207" aria-hidden="true" tabindex="-1"></a>      <span class="at">subsystems    =</span> <span class="fu">paste</span>(<span class="fu">unique</span>(subsystem), <span class="at">collapse =</span> <span class="st">";"</span>),</span>
+<span id="cb18-208"><a href="#cb18-208" aria-hidden="true" tabindex="-1"></a>      <span class="at">pathway_class =</span> <span class="fu">paste</span>(<span class="fu">unique</span>(pathway_class), <span class="at">collapse =</span> <span class="st">";"</span>),</span>
+<span id="cb18-209"><a href="#cb18-209" aria-hidden="true" tabindex="-1"></a>      <span class="at">reactions     =</span> <span class="fu">paste</span>(<span class="fu">unique</span>(reaction_id), <span class="at">collapse =</span> <span class="st">";"</span>),</span>
+<span id="cb18-210"><a href="#cb18-210" aria-hidden="true" tabindex="-1"></a>      <span class="at">.groups =</span> <span class="st">"drop"</span></span>
+<span id="cb18-211"><a href="#cb18-211" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb18-212"><a href="#cb18-212" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb18-213"><a href="#cb18-213" aria-hidden="true" tabindex="-1"></a>  <span class="fu">write_tsv</span>(</span>
+<span id="cb18-214"><a href="#cb18-214" aria-hidden="true" tabindex="-1"></a>    gem_by_gene,</span>
+<span id="cb18-215"><a href="#cb18-215" aria-hidden="true" tabindex="-1"></a>    <span class="st">"../processed/human_gem_gene_subsystem_summary.tsv"</span></span>
+<span id="cb18-216"><a href="#cb18-216" aria-hidden="true" tabindex="-1"></a>  )</span>
+<span id="cb18-217"><a href="#cb18-217" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb18-218"><a href="#cb18-218" aria-hidden="true" tabindex="-1"></a>  <span class="fu">tibble</span>(</span>
+<span id="cb18-219"><a href="#cb18-219" aria-hidden="true" tabindex="-1"></a>    <span class="at">metric =</span> <span class="fu">c</span>(</span>
+<span id="cb18-220"><a href="#cb18-220" aria-hidden="true" tabindex="-1"></a>      <span class="st">"Metabolic genes"</span>,</span>
+<span id="cb18-221"><a href="#cb18-221" aria-hidden="true" tabindex="-1"></a>      <span class="st">"Gene-reaction pairs"</span>,</span>
+<span id="cb18-222"><a href="#cb18-222" aria-hidden="true" tabindex="-1"></a>      <span class="st">"Reactions with gene association"</span>,</span>
+<span id="cb18-223"><a href="#cb18-223" aria-hidden="true" tabindex="-1"></a>      <span class="st">"Metabolic subsystems"</span>,</span>
+<span id="cb18-224"><a href="#cb18-224" aria-hidden="true" tabindex="-1"></a>      <span class="st">"Pathway classes"</span>,</span>
+<span id="cb18-225"><a href="#cb18-225" aria-hidden="true" tabindex="-1"></a>      <span class="st">"Genes without pathway class"</span></span>
+<span id="cb18-226"><a href="#cb18-226" aria-hidden="true" tabindex="-1"></a>    ),</span>
+<span id="cb18-227"><a href="#cb18-227" aria-hidden="true" tabindex="-1"></a>    <span class="at">value =</span> <span class="fu">c</span>(</span>
+<span id="cb18-228"><a href="#cb18-228" aria-hidden="true" tabindex="-1"></a>      <span class="fu">n_distinct</span>(gem_by_gene<span class="sc">$</span>hugo),</span>
+<span id="cb18-229"><a href="#cb18-229" aria-hidden="true" tabindex="-1"></a>      <span class="fu">nrow</span>(gem_long),</span>
+<span id="cb18-230"><a href="#cb18-230" aria-hidden="true" tabindex="-1"></a>      <span class="fu">n_distinct</span>(gem_long<span class="sc">$</span>reaction_id),</span>
+<span id="cb18-231"><a href="#cb18-231" aria-hidden="true" tabindex="-1"></a>      <span class="fu">n_distinct</span>(gem_long<span class="sc">$</span>subsystem),</span>
+<span id="cb18-232"><a href="#cb18-232" aria-hidden="true" tabindex="-1"></a>      <span class="fu">n_distinct</span>(gem_long<span class="sc">$</span>pathway_class, <span class="at">na.rm =</span> <span class="cn">TRUE</span>),</span>
+<span id="cb18-233"><a href="#cb18-233" aria-hidden="true" tabindex="-1"></a>      <span class="fu">sum</span>(<span class="fu">is.na</span>(gem_by_gene<span class="sc">$</span>pathway_class) <span class="sc">|</span> gem_by_gene<span class="sc">$</span>pathway_class <span class="sc">==</span> <span class="st">""</span>)</span>
+<span id="cb18-234"><a href="#cb18-234" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb18-235"><a href="#cb18-235" aria-hidden="true" tabindex="-1"></a>  ) <span class="sc">|&gt;</span></span>
+<span id="cb18-236"><a href="#cb18-236" aria-hidden="true" tabindex="-1"></a>    knitr<span class="sc">::</span><span class="fu">kable</span>(</span>
+<span id="cb18-237"><a href="#cb18-237" aria-hidden="true" tabindex="-1"></a>      <span class="at">col.names =</span> <span class="fu">c</span>(<span class="st">"Summary"</span>, <span class="st">"Value"</span>),</span>
+<span id="cb18-238"><a href="#cb18-238" aria-hidden="true" tabindex="-1"></a>      <span class="at">align =</span> <span class="fu">c</span>(<span class="st">"l"</span>, <span class="st">"c"</span>)</span>
+<span id="cb18-239"><a href="#cb18-239" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb18-240"><a href="#cb18-240" aria-hidden="true" tabindex="-1"></a>})</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output-display">
+<table class="caption-top table table-sm table-striped small">
+<thead>
+<tr class="header">
+<th style="text-align: left;">Summary</th>
+<th style="text-align: center;">Value</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: left;">Metabolic genes</td>
+<td style="text-align: center;">2887</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">Gene-reaction pairs</td>
+<td style="text-align: center;">25699</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">Reactions with gene association</td>
+<td style="text-align: center;">8043</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">Metabolic subsystems</td>
+<td style="text-align: center;">138</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">Pathway classes</td>
+<td style="text-align: center;">11</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">Genes without pathway class</td>
+<td style="text-align: center;">0</td>
+</tr>
+</tbody>
+</table>
 </div>
-<p>Metabolic gene coverage in each cohort:</p>
-<div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb26"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">"BEAT-AML:"</span>, <span class="fu">length</span>(<span class="fu">intersect</span>(<span class="fu">colnames</span>(expr_beat_aml), gem_genes<span class="sc">$</span>hugo)), <span class="st">"metabolic genes</span><span class="sc">\n</span><span class="st">"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>BEAT-AML: 2829 metabolic genes</code></pre>
 </div>
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb28"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">"TCGA-LAML:"</span>, <span class="fu">length</span>(<span class="fu">intersect</span>(<span class="fu">colnames</span>(expr_tcga_aml), gem_genes<span class="sc">$</span>hugo)), <span class="st">"metabolic genes</span><span class="sc">\n</span><span class="st">"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>TCGA-LAML: 2600 metabolic genes</code></pre>
-</div>
-</div>
-</section>
-<section id="ngs-ptl-metabolomics" class="level2">
-<h2 class="anchored" data-anchor-id="ngs-ptl-metabolomics">NGS-PTL metabolomics</h2>
-<p>Log-transformed, DNA-normalised metabolite abundance matrix (sheet: <em>Log Transformed DNANormImpData</em>). Samples whose ID starts with <code>CONTROL</code> are healthy CD34+ progenitors; all others are AML.</p>
-<div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb30"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a>metabolome_raw <span class="ot">&lt;-</span> <span class="fu">read_xlsx</span>(<span class="st">"../raw/Metabolome.xlsx"</span>,</span>
-<span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a>                            <span class="at">sheet =</span> <span class="st">"Log Transformed DNANormImpData"</span>) <span class="sc">|&gt;</span></span>
-<span id="cb30-3"><a href="#cb30-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">rename</span>(<span class="at">metabolite =</span> <span class="dv">1</span>) <span class="sc">|&gt;</span></span>
-<span id="cb30-4"><a href="#cb30-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(metabolite <span class="sc">!=</span> <span class="st">"Metabolite"</span>) <span class="sc">|&gt;</span></span>
-<span id="cb30-5"><a href="#cb30-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">column_to_rownames</span>(<span class="st">"metabolite"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-stderr">
-<pre><code>New names:
-• `CONTROL` -&gt; `CONTROL...52`
-• `CONTROL` -&gt; `CONTROL...53`
-• `CONTROL` -&gt; `CONTROL...54`
-• `CONTROL` -&gt; `CONTROL...55`
-• `CONTROL` -&gt; `CONTROL...56`
-• `CONTROL` -&gt; `CONTROL...57`
-• `CONTROL` -&gt; `CONTROL...58`
-• `CONTROL` -&gt; `CONTROL...59`
-• `CONTROL` -&gt; `CONTROL...60`
-• `CONTROL` -&gt; `CONTROL...61`
-• `CONTROL` -&gt; `CONTROL...62`
-• `CONTROL` -&gt; `CONTROL...63`
-• `CONTROL` -&gt; `CONTROL...64`
-• `CONTROL` -&gt; `CONTROL...65`
-• `CONTROL` -&gt; `CONTROL...66`
-• `CONTROL` -&gt; `CONTROL...67`
-• `CONTROL` -&gt; `CONTROL...68`
-• `CONTROL` -&gt; `CONTROL...69`
-• `CONTROL` -&gt; `CONTROL...70`
-• `CONTROL` -&gt; `CONTROL...71`
-• `CONTROL` -&gt; `CONTROL...72`
-• `CONTROL` -&gt; `CONTROL...73`
-• `CONTROL` -&gt; `CONTROL...74`
-• `CONTROL` -&gt; `CONTROL...75`
-• `CONTROL` -&gt; `CONTROL...76`
-• `CONTROL` -&gt; `CONTROL...77`
-• `CONTROL` -&gt; `CONTROL...78`
-• `CONTROL` -&gt; `CONTROL...79`
-• `CONTROL` -&gt; `CONTROL...80`
-• `CONTROL` -&gt; `CONTROL...81`
-• `CONTROL` -&gt; `CONTROL...82`
-• `CONTROL` -&gt; `CONTROL...83`
-• `CONTROL` -&gt; `CONTROL...84`
-• `CONTROL` -&gt; `CONTROL...85`
-• `CONTROL` -&gt; `CONTROL...86`
-• `CONTROL` -&gt; `CONTROL...87`
-• `CONTROL` -&gt; `CONTROL...88`
-• `CONTROL` -&gt; `CONTROL...89`
-• `CONTROL` -&gt; `CONTROL...90`
-• `CONTROL` -&gt; `CONTROL...91`
-• `CONTROL` -&gt; `CONTROL...92`
-• `CONTROL` -&gt; `CONTROL...93`</code></pre>
-</div>
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb32"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a>ngs_ptl_metabolome <span class="ot">&lt;-</span> metabolome_raw <span class="sc">|&gt;</span></span>
-<span id="cb32-2"><a href="#cb32-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">t</span>() <span class="sc">|&gt;</span></span>
-<span id="cb32-3"><a href="#cb32-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">as_tibble</span>(<span class="at">rownames =</span> <span class="st">"sample_id"</span>)</span>
-<span id="cb32-4"><a href="#cb32-4" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb32-5"><a href="#cb32-5" aria-hidden="true" tabindex="-1"></a>ngs_ptl_metadata <span class="ot">&lt;-</span> <span class="fu">tibble</span>(<span class="at">sample_id =</span> <span class="fu">colnames</span>(metabolome_raw)) <span class="sc">|&gt;</span></span>
-<span id="cb32-6"><a href="#cb32-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">sample_type =</span> <span class="fu">if_else</span>(<span class="fu">str_starts</span>(sample_id, <span class="st">"CONTROL"</span>), <span class="st">"control"</span>, <span class="st">"AML"</span>))</span>
-<span id="cb32-7"><a href="#cb32-7" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb32-8"><a href="#cb32-8" aria-hidden="true" tabindex="-1"></a><span class="fu">write_tsv</span>(ngs_ptl_metabolome, <span class="st">"../processed/ngs_ptl_metabolome.tsv"</span>)</span>
-<span id="cb32-9"><a href="#cb32-9" aria-hidden="true" tabindex="-1"></a><span class="fu">write_tsv</span>(ngs_ptl_metadata,   <span class="st">"../processed/ngs_ptl_metadata.tsv"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-</div>
+<!-- ## NGS-PTL metabolomics -->
+<!-- Log-transformed, DNA-normalised metabolite abundance matrix (sheet: *Log Transformed DNANormImpData*). Samples whose ID starts with `CONTROL` are healthy CD34+ progenitors; all others are AML. -->
+<!-- ```{r} -->
+<!-- metabolome_raw <- read_xlsx("../raw/Metabolome.xlsx", -->
+<!--                             sheet = "Log Transformed DNANormImpData", skip = 1) |> -->
+<!--   rename(metabolite = 1) |> -->
+<!--   filter(metabolite != "Metabolite") |> -->
+<!--   column_to_rownames("metabolite") -->
+<!-- ngs_ptl_metabolome <- metabolome_raw |> -->
+<!--   t() |> -->
+<!--   as_tibble(rownames = "sample_id") -->
+<!-- ngs_ptl_metadata <- tibble(sample_id = colnames(metabolome_raw)) |> -->
+<!--   mutate(sample_type = if_else(str_starts(sample_id, "CONTROL"), "control", "AML")) -->
+<!-- write_tsv(ngs_ptl_metabolome, "../processed/ngs_ptl_metabolome.tsv") -->
+<!-- write_tsv(ngs_ptl_metadata,   "../processed/ngs_ptl_metadata.tsv") -->
+<!-- ``` -->
 </section>
 
 </main>
