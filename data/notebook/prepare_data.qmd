@@ -10,7 +10,7 @@ Reads raw files from all three cohorts, aligns samples to WES IDs, and writes cl
 library(tidyverse)
 library(knitr)
 library(readxl)
-library(ggVennDiagram)
+library(ggvenn)
 ```
 
 ## WES mutations
@@ -33,35 +33,40 @@ wes_wide <- wes %>%
 
 ## BEAT-AML expression
 
-The expression matrix uses RNA-seq IDs (`dbgap_rnaseq_sample`). The sample mapping table (source: [Bottomly et al. 2022](https://github.com/biodev/beataml2.0_data)) converts these to WES IDs (`labId`), keeping only samples flagged for inclusion.
+The expression matrix uses RNA-seq IDs (`dbgap_rnaseq_sample`). The sample mapping table (source: [Bottomly et al. 2022](https://github.com/biodev/beataml2.0_data)) converts these to WES IDs (`sample_id`), keeping only samples flagged for inclusion.
 
 ```{r}
 expr_beat <- read_tsv("../raw/210126_BEAT-AML_CPM-TMM_log2_with_hugo.tsv.xz",
                       show_col_types = FALSE) |>
-  column_to_rownames("symbol") |>
-  t() |>
+  column_to_rownames("symbol") |> t() |>
   as_tibble(rownames = "dbgap_rnaseq_sample")
 
 meta_beat <- read_xlsx("../raw/beataml_waves1to4_sample_mapping.xlsx") |>
-  filter(rna_include_in_analysis == "yes")
+  filter(rna_include_in_analysis == "yes") %>%
+  rename(sample_id = labId)
 
 expr_beat <- expr_beat |>
-  left_join(select(meta_beat, dbgap_rnaseq_sample, labId),
+  left_join(select(meta_beat, dbgap_rnaseq_sample, sample_id),
             by = "dbgap_rnaseq_sample") |>
-  relocate(labId, .after = "dbgap_rnaseq_sample") |>
-  select(-dbgap_rnaseq_sample)
+  select(-dbgap_rnaseq_sample) |>
+  relocate(sample_id)
 ```
 
 Keep only samples present in both expression and WES.
 
 ```{r, fig.width=4, fig.height=3.5}
 sample_id_wes_beat <- wes |> filter(cohort == "BEAT-AML") |> pull(ID) |> unique()
-ggVennDiagram(x = list(wes = sample_id_wes_beat, rna = expr_beat$labId))
+p_venn_beat <- ggvenn(list(WES = sample_id_wes_beat, `RNA-seq` = expr_beat$sample_id),
+       fill_color = c("#08306B", "#41B6C4"), stroke_color = c("#08306B", "#41B6C4"),
+       fill_alpha = 0.75, show_stats = "c", set_name_size = 4, text_size = 4) +
+  labs(title = "BEAT-AML", subtitle = "Overlap between WES and RNA-seq samples") +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5), plot.subtitle = element_text(hjust = 0.5))
+p_venn_beat
 ```
 
 ```{r}
 expr_beat_wes <- expr_beat |>
-  filter(labId %in% sample_id_wes_beat)
+  filter(sample_id %in% sample_id_wes_beat)
 rm(sample_id_wes_beat)
 ```
 
@@ -102,7 +107,13 @@ Keep only samples present in both expression and WES.
 
 ```{r, fig.width=4, fig.height=3.5}
 sample_id_wes_tcga <- wes |> filter(cohort == "TCGA") |> pull(ID) |> unique()
-ggVennDiagram(x = list(wes = sample_id_wes_tcga, rna = expr_tcga$sample_id))
+
+p_venn_tcga <- ggvenn(list(WES = sample_id_wes_tcga, `RNA-seq` = expr_tcga$sample_id),
+       fill_color = c("#8B1E3F", "#E76F51"), stroke_color = c("#8B1E3F", "#E76F51"),
+       fill_alpha = 0.75, show_stats = "c", set_name_size = 4, text_size = 4) +
+  labs(title = "TCGA-LAML", subtitle = "Overlap between WES and RNA-seq samples") +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5), plot.subtitle = element_text(hjust = 0.5))
+p_venn_tcga
 ```
 
 ```{r}
@@ -116,114 +127,19 @@ rm(sample_id_wes_tcga)
 The two cohorts were normalised independently and cannot be merged. Genes exclusive to BEAT-AML are nearly all zero (>99% zero counts) and will be dropped when filtering to Human-GEM metabolic genes.
 
 ```{r, fig.width=4, fig.height=3.5}
-ggVennDiagram(x = list(beat = colnames(expr_beat_wes)[-1],
-                       tcga = colnames(expr_tcga_wes)[-1]))
-```
-
-```{r}
-#| label: gene-and-sample-overlap-summary
-
-local({
-  
-  inter <- intersect(colnames(expr_beat_wes)[-1], colnames(expr_tcga_wes)[-1])
-  
-  only_beat <- setdiff(colnames(expr_beat_wes)[-1], colnames(expr_tcga_wes)[-1])
-  only_tcga <- setdiff(colnames(expr_tcga_wes)[-1], colnames(expr_beat_wes)[-1])
-  
-  tibble(
-    cohort = c("BEAT-AML", "TCGA-LAML"),
-    
-    wes_samples = c(
-      wes |> filter(cohort == "BEAT-AML") |> pull(ID) |> unique() |> length(),
-      wes |> filter(cohort == "TCGA") |> pull(ID) |> unique() |> length()
-    ),
-    
-    rna_samples = c(
-      n_distinct(expr_beat$labId),
-      n_distinct(expr_tcga$sample_id)
-    ),
-    
-    matched_rna_wes_samples = c(
-      n_distinct(expr_beat_wes$labId),
-      n_distinct(expr_tcga_wes$sample_id)
-    ),
-    
-    total_genes = c(
-      ncol(expr_beat_wes) - 1,
-      ncol(expr_tcga_wes) - 1
-    ),
-    
-    shared_genes = length(inter),
-    
-    cohort_specific_genes = c(
-      length(only_beat),
-      length(only_tcga)
-    ),
-    
-    zero_fraction_in_shared_genes = c(
-      mean(as.matrix(expr_beat_wes[, inter, drop = FALSE]) == 0, na.rm = TRUE),
-      mean(as.matrix(expr_tcga_wes[, inter, drop = FALSE]) == 0, na.rm = TRUE)
-    ),
-    
-    shared_expression_fraction = c(
-      sum(as.matrix(expr_beat_wes[, inter, drop = FALSE]), na.rm = TRUE) /
-        sum(as.matrix(expr_beat_wes[, -1, drop = FALSE]), na.rm = TRUE),
-      
-      sum(as.matrix(expr_tcga_wes[, inter, drop = FALSE]), na.rm = TRUE) /
-        sum(as.matrix(expr_tcga_wes[, -1, drop = FALSE]), na.rm = TRUE)
-    ),
-    
-    zero_fraction_in_cohort_specific_genes = c(
-      if (length(only_beat) == 0) {
-        NA_real_
-      } else {
-        mean(as.matrix(expr_beat_wes[, only_beat, drop = FALSE]) == 0, na.rm = TRUE)
-      },
-      
-      if (length(only_tcga) == 0) {
-        NA_real_
-      } else {
-        mean(as.matrix(expr_tcga_wes[, only_tcga, drop = FALSE]) == 0, na.rm = TRUE)
-      }
-    )
-  ) |>
-    mutate(
-      zero_fraction_in_shared_genes = scales::percent(
-        zero_fraction_in_shared_genes,
-        accuracy = 0.01
-      ),
-      shared_expression_fraction = scales::percent(
-        shared_expression_fraction,
-        accuracy = 0.01
-      ),
-      zero_fraction_in_cohort_specific_genes = scales::percent(
-        zero_fraction_in_cohort_specific_genes,
-        accuracy = 0.01
-      )
-    ) |>
-    knitr::kable(
-      col.names = c(
-        "Cohort",
-        "WES samples",
-        "RNA samples",
-        "Matched RNA-WES samples",
-        "Total genes",
-        "Shared genes",
-        "Cohort-specific genes",
-        "Zero values in shared genes (%)",
-        "Total expression found in shared genes (%)",
-        "Zero values in cohort-specific genes (%)"
-      ),
-      align = c("l", rep("c", 9))
-    )
-})
+p_gene_overlap <- ggvenn(list(`BEAT-AML` = colnames(expr_beat_wes)[-1], `TCGA-LAML` = colnames(expr_tcga_wes)[-1]),
+       fill_color = c("#2166AC", "#B2182B"), stroke_color = c("#2166AC", "#B2182B"),
+       fill_alpha = 0.75, show_stats = "c", set_name_size = 4, text_size = 4) +
+  labs(title = "Gene overlap: BEAT-AML vs TCGA-LAML", subtitle = "Shared genes across expression matrices") +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5), plot.subtitle = element_text(hjust = 0.5))
+p_gene_overlap
 ```
 
 ## Export expression matrices
 
 ```{r}
 expr_beat_wes |>
-  rename(sample_id = labId) |>
+  rename(sample_id = sample_id) |>
   write_tsv(xzfile("../processed/beat_wes_expression.tsv.xz"))
 
 expr_tcga_wes |>
@@ -242,16 +158,16 @@ karyotype <- read_xlsx("../raw/Karyotype and other variables.xlsx", col_types = 
 
 ```{r}
 beat_wes_metadata <- meta_beat |>
-  filter(labId %in% expr_beat_wes$labId) |>
-  relocate(labId) |>
-  rename(sample_id = labId) |>
+  filter(sample_id %in% expr_beat_wes$sample_id) |>
+  relocate(sample_id) |>
+  rename(sample_id = sample_id) |>
   left_join(
     karyotype |>
       filter(cohort == "BEAT-AML") |>
       select(sample_id, Patient_Id, Gender, Disease_Type),
     by = "sample_id"
   ) |>
-  arrange(match(sample_id, expr_beat_wes$labId)) %>%
+  arrange(match(sample_id, expr_beat_wes$sample_id)) %>%
   mutate(cohort = "BEAT")
 
 tcga_wes_metadata <- karyotype |>
@@ -263,7 +179,7 @@ write_tsv(beat_wes_metadata,  "../processed/beat_wes_metadata.tsv")
 write_tsv(tcga_wes_metadata, "../processed/tcga_wes_metadata.tsv")
 ```
 
-## Save Wide Wes info
+## Export binary WES mutation matrix
 
 ```{r}
 map_sample_cohort <- bind_rows(beat_wes_metadata, tcga_wes_metadata) %>%
@@ -276,6 +192,17 @@ wes_wide <- left_join(wes_wide, map_sample_cohort, by = "sample_id") %>%
 write_tsv(wes_wide,"../../data/processed/wes_wide.tsv")
 ```
 
+```{r}
+rna_ids <- unique(c(expr_beat_wes$sample_id, expr_tcga_wes$sample_id))
+wes_ids <- unique(wes_wide$sample_id)
+
+tibble(
+  RNA_samples = length(rna_ids),
+  WES_samples = length(wes_ids),
+  matched = length(intersect(rna_ids, wes_ids)),
+  missing = length(setdiff(rna_ids, wes_ids)))
+```
+
 
 ## Human-GEM: metabolic gene annotation
 
@@ -284,248 +211,370 @@ Human-GEM links genes to metabolic subsystems through GPR (gene–protein–reac
 ```{r}
 #| label: human-gem-gene-annotation
 
+gem_genes <- read_xlsx("../raw/Human-GEM.xlsx", sheet = "GENES") |>
+  select(
+    ensembl_id = NAME,
+    hugo = `SHORT NAME`
+  )
+
+gem_genes_official <- read_tsv(
+  "../raw/Human-GEM-official.tsv",
+  show_col_types = FALSE
+) |>
+  select(
+    ensembl_id  = genes,
+    gene_name   = geneNames,
+    uniprot     = geneUniProtID,
+    compartment = compartments
+  )
+
+gem_rxns <- read_xlsx("../raw/Human-GEM.xlsx", sheet = "RXNS") |>
+  select(
+    reaction_id      = ID,
+    reaction_name    = NAME,
+    gene_association = `GENE ASSOCIATION`,
+    subsystem        = SUBSYSTEM
+  ) |>
+  filter(!is.na(gene_association))
+
+pathway_map <- tribble(
+  ~subsystem, ~pathway_class,
+  "Glycolysis / Gluconeogenesis",                                      "Carbohydrate metabolism",
+  "Starch and sucrose metabolism",                                      "Carbohydrate metabolism",
+  "Galactose metabolism",                                               "Carbohydrate metabolism",
+  "Fructose and mannose metabolism",                                    "Carbohydrate metabolism",
+  "Pentose and glucuronate interconversions",                           "Carbohydrate metabolism",
+  "Pyruvate metabolism",                                                "Carbohydrate metabolism",
+  "Propanoate metabolism",                                              "Carbohydrate metabolism",
+  "Butanoate metabolism",                                               "Carbohydrate metabolism",
+  "Pentose phosphate pathway",                                          "Carbohydrate metabolism",
+  "Pentose Phosphate Pathway",                                          "Carbohydrate metabolism",
+  "Tricarboxylic acid cycle and glyoxylate/dicarboxylate metabolism",   "Carbohydrate metabolism",
+  "Glyoxylate and dicarboxylate metabolism",                           "Carbohydrate metabolism",
+  "Purine metabolism",                                                  "Nucleotide metabolism",
+  "Pyrimidine metabolism",                                              "Nucleotide metabolism",
+  "Nucleotide metabolism",                                              "Nucleotide metabolism",
+  "Aminoacyl-tRNA biosynthesis",                                        "Nucleotide metabolism",
+  "Alanine, aspartate and glutamate metabolism",                        "Amino acid metabolism",
+  "Arginine and proline metabolism",                                    "Amino acid metabolism",
+  "Histidine metabolism",                                               "Amino acid metabolism",
+  "Glycine, serine and threonine metabolism",                           "Amino acid metabolism",
+  "Lysine metabolism",                                                  "Amino acid metabolism",
+  "Tryptophan metabolism",                                              "Amino acid metabolism",
+  "Tyrosine metabolism",                                                "Amino acid metabolism",
+  "Valine, leucine, and isoleucine metabolism",                         "Amino acid metabolism",
+  "Phenylalanine, tyrosine and tryptophan biosynthesis",                "Amino acid metabolism",
+  "Cysteine and methionine metabolism",                                 "Amino acid metabolism",
+  "Glutathione metabolism",                                             "Amino acid metabolism",
+  "Beta-alanine metabolism",                                            "Amino acid metabolism",
+  "Metabolism of other amino acids",                                    "Amino acid metabolism",
+  "Phenylalanine metabolism",                                           "Amino acid metabolism",
+  "Urea cycle",                                                         "Amino acid metabolism",
+  "Sulfur metabolism",                                                  "Amino acid metabolism",
+  "C5-branched dibasic acid metabolism",                                "Amino acid metabolism",
+  "Serotonin and melatonin biosynthesis",                               "Amino acid metabolism",
+  "Fatty acid activation (cytosolic)",                                  "Lipid metabolism",
+  "Fatty acid activation (endoplasmic reticular)",                      "Lipid metabolism",
+  "Fatty acid biosynthesis (even-chain)",                               "Lipid metabolism",
+  "Fatty acid biosynthesis (odd-chain)",                                "Lipid metabolism",
+  "Fatty acid biosynthesis (unsaturated)",                              "Lipid metabolism",
+  "Fatty acid elongation (even-chain)",                                 "Lipid metabolism",
+  "Fatty acid elongation (odd-chain)",                                  "Lipid metabolism",
+  "Fatty acid desaturation (even-chain)",                               "Lipid metabolism",
+  "Fatty acid desaturation (odd-chain)",                                "Lipid metabolism",
+  "Fatty acid biosynthesis",                                            "Lipid metabolism",
+  "Fatty acid oxidation",                                               "Lipid metabolism",
+  "Fatty acid degradation",                                             "Lipid metabolism",
+  "Fatty acid metabolism",                                              "Lipid metabolism",
+  "Linoleate metabolism",                                               "Lipid metabolism",
+  "Lipoic acid metabolism",                                             "Lipid metabolism",
+  "Omega-3 fatty acid metabolism",                                      "Lipid metabolism",
+  "Omega-6 fatty acid metabolism",                                      "Lipid metabolism",
+  "Arachidonic acid metabolism",                                        "Lipid metabolism",
+  "\tArachidonic acid metabolism",                                       "Lipid metabolism",
+  "Leukotriene metabolism",                                             "Lipid metabolism",
+  "Eicosanoid metabolism",                                              "Lipid metabolism",
+  "Acyl-CoA hydrolysis",                                                "Lipid metabolism",
+  "Carnitine shuttle (cytosolic)",                                      "Lipid metabolism",
+  "Carnitine shuttle (mitochondrial)",                                  "Lipid metabolism",
+  "Carnitine shuttle (peroxisomal)",                                    "Lipid metabolism",
+  "Carnitine shuttle (endoplasmic reticular)",                          "Lipid metabolism",
+  "Acylglycerides metabolism",                                          "Lipid metabolism",
+  "Beta oxidation of even-chain fatty acids (peroxisomal)",             "Lipid metabolism",
+  "Beta oxidation of odd-chain fatty acids (peroxisomal)",              "Lipid metabolism",
+  "Beta oxidation of unsaturated fatty acids (n-9) (peroxisomal)",      "Lipid metabolism",
+  "Beta oxidation of phytanic acid (peroxisomal)",                      "Lipid metabolism",
+  "Beta oxidation of di-unsaturated fatty acids (n-6) (peroxisomal)",   "Lipid metabolism",
+  "Beta oxidation of even-chain fatty acids (mitochondrial)",           "Lipid metabolism",
+  "Beta oxidation of odd-chain fatty acids (mitochondrial)",            "Lipid metabolism",
+  "Beta oxidation of unsaturated fatty acids (n-7) (mitochondrial)",    "Lipid metabolism",
+  "Beta oxidation of unsaturated fatty acids (n-7) (peroxisomal)",      "Lipid metabolism",
+  "Beta oxidation of unsaturated fatty acids (n-9) (mitochondrial)",    "Lipid metabolism",
+  "Beta oxidation of di-unsaturated fatty acids (n-6) (mitochondrial)", "Lipid metabolism",
+  "Beta oxidation of poly-unsaturated fatty acids (mitochondrial)",     "Lipid metabolism",
+  "Beta oxidation of branched-chain fatty acids (mitochondrial)",       "Lipid metabolism",
+  "Terpenoid backbone biosynthesis",                                    "Lipid metabolism",
+  "Steroid metabolism",                                                 "Lipid metabolism",
+  "Androgen metabolism",                                                "Lipid metabolism",
+  "Cholesterol biosynthesis 1 (Bloch pathway)",                         "Lipid metabolism",
+  "Cholesterol biosynthesis 2",                                         "Lipid metabolism",
+  "Cholesterol biosynthesis 3 (Kandustch-Russell pathway)",             "Lipid metabolism",
+  "Cholesterol metabolism",                                             "Lipid metabolism",
+  "Estrogen metabolism",                                                "Lipid metabolism",
+  "Formation and hydrolysis of cholesterol esters",                     "Lipid metabolism",
+  "Sphingolipid metabolism",                                            "Lipid metabolism",
+  "Glycerolipid metabolism",                                            "Lipid metabolism",
+  "Glycerophospholipid metabolism",                                     "Lipid metabolism",
+  "Glucocorticoid biosynthesis",                                        "Lipid metabolism",
+  "Prostaglandin biosynthesis",                                         "Lipid metabolism",
+  "Ether lipid metabolism",                                             "Lipid metabolism",
+  "Bile acid biosynthesis",                                             "Lipid metabolism",
+  "Bile acid recycling",                                                "Lipid metabolism",
+  "Triacylglycerol synthesis",                                          "Lipid metabolism",
+  "Inositol phosphate metabolism",                                      "Lipid metabolism",
+  "Phosphatidylinositol phosphate metabolism",                          "Lipid metabolism",
+  "Oxidative phosphorylation",                                          "Energy metabolism",
+  "ROS detoxification",                                                 "Energy metabolism",
+  "Ubiquinone synthesis",                                               "Energy metabolism",
+  "Ubiquinone and other terpenoid-quinone biosynthesis",                "Energy metabolism",
+  "O-glycan metabolism",                                                "Glycan metabolism",
+  "N-glycan metabolism",                                                "Glycan metabolism",
+  "Amino sugar and nucleotide sugar metabolism",                        "Glycan metabolism",
+  "Glycosphingolipid biosynthesis-ganglio series",                      "Glycan metabolism",
+  "Glycosphingolipid biosynthesis-globo series",                        "Glycan metabolism",
+  "Glycosphingolipid biosynthesis-lacto and neolacto series",           "Glycan metabolism",
+  "Glycosphingolipid metabolism",                                       "Glycan metabolism",
+  "Glycosylphosphatidylinositol (GPI)-anchor biosynthesis",             "Glycan metabolism",
+  "Chondroitin / heparan sulfate biosynthesis",                         "Glycan metabolism",
+  "Chondroitin sulfate degradation",                                    "Glycan metabolism",
+  "Heparan sulfate degradation",                                        "Glycan metabolism",
+  "Keratan sulfate biosynthesis",                                       "Glycan metabolism",
+  "Keratan sulfate degradation",                                        "Glycan metabolism",
+  "Blood group biosynthesis",                                           "Glycan metabolism",
+  "Nicotinate and nicotinamide metabolism",                             "Vitamin and cofactor metabolism",
+  "Pantothenate and CoA metabolism",                                    "Vitamin and cofactor metabolism",
+  "Folate metabolism",                                                  "Vitamin and cofactor metabolism",
+  "Biotin metabolism",                                                  "Vitamin and cofactor metabolism",
+  "Biopterin metabolism",                                               "Vitamin and cofactor metabolism",
+  "Ascorbate and aldarate metabolism",                                  "Vitamin and cofactor metabolism",
+  "Porphyrin metabolism",                                               "Vitamin and cofactor metabolism",
+  "Retinol metabolism",                                                 "Vitamin and cofactor metabolism",
+  "Riboflavin metabolism",                                              "Vitamin and cofactor metabolism",
+  "Thiamine metabolism",                                                "Vitamin and cofactor metabolism",
+  "Vitamin B12 metabolism",                                             "Vitamin and cofactor metabolism",
+  "Vitamin B6 metabolism",                                              "Vitamin and cofactor metabolism",
+  "Vitamin D metabolism",                                               "Vitamin and cofactor metabolism",
+  "Vitamin E metabolism",                                               "Vitamin and cofactor metabolism",
+  "Vitamin C metabolism",                                               "Vitamin and cofactor metabolism",
+  "Vitamin A metabolism",                                               "Vitamin and cofactor metabolism",
+  "Vitamin B2 metabolism",                                              "Vitamin and cofactor metabolism",
+  "Heme degradation",                                                   "Vitamin and cofactor metabolism",
+  "Protein assembly",                                                   "Protein metabolism",
+  "Protein modification",                                               "Protein metabolism",
+  "Protein degradation",                                                "Protein metabolism",
+  "Peptide metabolism",                                                 "Protein metabolism",
+  "Transport reactions",                                                "Transport",
+  "Exchange/demand reactions",                                          "Transport",
+  "Xenobiotics metabolism",                                             "Xenobiotics",
+  "Drug metabolism",                                                    "Xenobiotics",
+  "Toluene degradation",                                                "Xenobiotics",
+  "octane oxidation",                                                   "Xenobiotics",
+  "Alkaloids biosynthesis",                                             "Xenobiotics",
+  "Hippurate metabolism",                                               "Xenobiotics",
+  "Insect hormone biosynthesis",                                        "Xenobiotics",
+  "Dietary fiber binding",                                              "Xenobiotics",
+  "Miscellaneous",                                                      "Other",
+  "Isolated",                                                           "Other",
+  "Pool reactions",                                                     "Other",
+  "Artificial reactions",                                               "Other",
+  "non_metabolic",                                                      "non_metabolic"
+)
+
+gem_long <- gem_rxns |>
+  mutate(ensembl_id = str_extract_all(gene_association, "ENSG\\d+")) |>
+  unnest(ensembl_id) |>
+  left_join(gem_genes,          by = "ensembl_id") |>
+  left_join(gem_genes_official, by = "ensembl_id") |>
+  left_join(pathway_map,        by = "subsystem") |>
+  filter(!is.na(hugo)) |>
+  select(
+    hugo,
+    ensembl_id,
+    gene_name,
+    uniprot,
+    compartment,
+    reaction_id,
+    reaction_name,
+    subsystem,
+    pathway_class
+  ) |>
+  distinct()
+
+gem_by_gene <<- gem_long |>
+  group_by(hugo, ensembl_id, gene_name, uniprot, compartment) |>
+  summarise(
+    n_reactions   = n_distinct(reaction_id),
+    n_subsystems  = n_distinct(subsystem),
+    subsystems    = paste(unique(subsystem), collapse = ";"),
+    pathway_class = paste(unique(pathway_class), collapse = ";"),
+    reactions     = paste(unique(reaction_id), collapse = ";"),
+    .groups = "drop"
+  )
+
+write_tsv(
+  gem_by_gene,
+  "../processed/human_gem_gene_subsystem_summary.tsv"
+)
+
+tibble(
+  metric = c(
+    "Metabolic genes",
+    "Gene-reaction pairs",
+    "Reactions with gene association",
+    "Metabolic subsystems",
+    "Pathway classes",
+    "Genes without pathway class"
+  ),
+  value = c(
+    n_distinct(gem_by_gene$hugo),
+    nrow(gem_long),
+    n_distinct(gem_long$reaction_id),
+    n_distinct(gem_long$subsystem),
+    n_distinct(gem_long$pathway_class, na.rm = TRUE),
+    sum(is.na(gem_by_gene$pathway_class) | gem_by_gene$pathway_class == "")
+  )
+) |>
+  knitr::kable(
+    col.names = c("Summary", "Value"),
+    align = c("l", "c")
+  )
+```
+
+
+```{r, fig.width=12, fig.height=4}
+#| label: gene-and-sample-overlap-summary
+
 local({
-  
-  gem_genes <- read_xlsx("../raw/Human-GEM.xlsx", sheet = "GENES") |>
-    select(
-      ensembl_id = NAME,
-      hugo = `SHORT NAME`
-    )
-  
-  gem_genes_official <- read_tsv(
-    "../raw/Human-GEM-official.tsv",
-    show_col_types = FALSE
-  ) |>
-    select(
-      ensembl_id  = genes,
-      gene_name   = geneNames,
-      uniprot     = geneUniProtID,
-      compartment = compartments
-    )
-  
-  gem_rxns <- read_xlsx("../raw/Human-GEM.xlsx", sheet = "RXNS") |>
-    select(
-      reaction_id      = ID,
-      reaction_name    = NAME,
-      gene_association = `GENE ASSOCIATION`,
-      subsystem        = SUBSYSTEM
-    ) |>
-    filter(!is.na(gene_association))
-  
-  pathway_map <- tribble(
-    ~subsystem, ~pathway_class,
-    "Glycolysis / Gluconeogenesis",                                      "Carbohydrate metabolism",
-    "Starch and sucrose metabolism",                                      "Carbohydrate metabolism",
-    "Galactose metabolism",                                               "Carbohydrate metabolism",
-    "Fructose and mannose metabolism",                                    "Carbohydrate metabolism",
-    "Pentose and glucuronate interconversions",                           "Carbohydrate metabolism",
-    "Pyruvate metabolism",                                                "Carbohydrate metabolism",
-    "Propanoate metabolism",                                              "Carbohydrate metabolism",
-    "Butanoate metabolism",                                               "Carbohydrate metabolism",
-    "Pentose phosphate pathway",                                          "Carbohydrate metabolism",
-    "Pentose Phosphate Pathway",                                          "Carbohydrate metabolism",
-    "Tricarboxylic acid cycle and glyoxylate/dicarboxylate metabolism",   "Carbohydrate metabolism",
-    "Glyoxylate and dicarboxylate metabolism",                           "Carbohydrate metabolism",
-    "Purine metabolism",                                                  "Nucleotide metabolism",
-    "Pyrimidine metabolism",                                              "Nucleotide metabolism",
-    "Nucleotide metabolism",                                              "Nucleotide metabolism",
-    "Aminoacyl-tRNA biosynthesis",                                        "Nucleotide metabolism",
-    "Alanine, aspartate and glutamate metabolism",                        "Amino acid metabolism",
-    "Arginine and proline metabolism",                                    "Amino acid metabolism",
-    "Histidine metabolism",                                               "Amino acid metabolism",
-    "Glycine, serine and threonine metabolism",                           "Amino acid metabolism",
-    "Lysine metabolism",                                                  "Amino acid metabolism",
-    "Tryptophan metabolism",                                              "Amino acid metabolism",
-    "Tyrosine metabolism",                                                "Amino acid metabolism",
-    "Valine, leucine, and isoleucine metabolism",                         "Amino acid metabolism",
-    "Phenylalanine, tyrosine and tryptophan biosynthesis",                "Amino acid metabolism",
-    "Cysteine and methionine metabolism",                                 "Amino acid metabolism",
-    "Glutathione metabolism",                                             "Amino acid metabolism",
-    "Beta-alanine metabolism",                                            "Amino acid metabolism",
-    "Metabolism of other amino acids",                                    "Amino acid metabolism",
-    "Phenylalanine metabolism",                                           "Amino acid metabolism",
-    "Urea cycle",                                                         "Amino acid metabolism",
-    "Sulfur metabolism",                                                  "Amino acid metabolism",
-    "C5-branched dibasic acid metabolism",                                "Amino acid metabolism",
-    "Serotonin and melatonin biosynthesis",                               "Amino acid metabolism",
-    "Fatty acid activation (cytosolic)",                                  "Lipid metabolism",
-    "Fatty acid activation (endoplasmic reticular)",                      "Lipid metabolism",
-    "Fatty acid biosynthesis (even-chain)",                               "Lipid metabolism",
-    "Fatty acid biosynthesis (odd-chain)",                                "Lipid metabolism",
-    "Fatty acid biosynthesis (unsaturated)",                              "Lipid metabolism",
-    "Fatty acid elongation (even-chain)",                                 "Lipid metabolism",
-    "Fatty acid elongation (odd-chain)",                                  "Lipid metabolism",
-    "Fatty acid desaturation (even-chain)",                               "Lipid metabolism",
-    "Fatty acid desaturation (odd-chain)",                                "Lipid metabolism",
-    "Fatty acid biosynthesis",                                            "Lipid metabolism",
-    "Fatty acid oxidation",                                               "Lipid metabolism",
-    "Fatty acid degradation",                                             "Lipid metabolism",
-    "Fatty acid metabolism",                                              "Lipid metabolism",
-    "Linoleate metabolism",                                               "Lipid metabolism",
-    "Lipoic acid metabolism",                                             "Lipid metabolism",
-    "Omega-3 fatty acid metabolism",                                      "Lipid metabolism",
-    "Omega-6 fatty acid metabolism",                                      "Lipid metabolism",
-    "Arachidonic acid metabolism",                                        "Lipid metabolism",
-    "\tArachidonic acid metabolism",                                       "Lipid metabolism",
-    "Leukotriene metabolism",                                             "Lipid metabolism",
-    "Eicosanoid metabolism",                                              "Lipid metabolism",
-    "Acyl-CoA hydrolysis",                                                "Lipid metabolism",
-    "Carnitine shuttle (cytosolic)",                                      "Lipid metabolism",
-    "Carnitine shuttle (mitochondrial)",                                  "Lipid metabolism",
-    "Carnitine shuttle (peroxisomal)",                                    "Lipid metabolism",
-    "Carnitine shuttle (endoplasmic reticular)",                          "Lipid metabolism",
-    "Acylglycerides metabolism",                                          "Lipid metabolism",
-    "Beta oxidation of even-chain fatty acids (peroxisomal)",             "Lipid metabolism",
-    "Beta oxidation of odd-chain fatty acids (peroxisomal)",              "Lipid metabolism",
-    "Beta oxidation of unsaturated fatty acids (n-9) (peroxisomal)",      "Lipid metabolism",
-    "Beta oxidation of phytanic acid (peroxisomal)",                      "Lipid metabolism",
-    "Beta oxidation of di-unsaturated fatty acids (n-6) (peroxisomal)",   "Lipid metabolism",
-    "Beta oxidation of even-chain fatty acids (mitochondrial)",           "Lipid metabolism",
-    "Beta oxidation of odd-chain fatty acids (mitochondrial)",            "Lipid metabolism",
-    "Beta oxidation of unsaturated fatty acids (n-7) (mitochondrial)",    "Lipid metabolism",
-    "Beta oxidation of unsaturated fatty acids (n-7) (peroxisomal)",      "Lipid metabolism",
-    "Beta oxidation of unsaturated fatty acids (n-9) (mitochondrial)",    "Lipid metabolism",
-    "Beta oxidation of di-unsaturated fatty acids (n-6) (mitochondrial)", "Lipid metabolism",
-    "Beta oxidation of poly-unsaturated fatty acids (mitochondrial)",     "Lipid metabolism",
-    "Beta oxidation of branched-chain fatty acids (mitochondrial)",       "Lipid metabolism",
-    "Terpenoid backbone biosynthesis",                                    "Lipid metabolism",
-    "Steroid metabolism",                                                 "Lipid metabolism",
-    "Androgen metabolism",                                                "Lipid metabolism",
-    "Cholesterol biosynthesis 1 (Bloch pathway)",                         "Lipid metabolism",
-    "Cholesterol biosynthesis 2",                                         "Lipid metabolism",
-    "Cholesterol biosynthesis 3 (Kandustch-Russell pathway)",             "Lipid metabolism",
-    "Cholesterol metabolism",                                             "Lipid metabolism",
-    "Estrogen metabolism",                                                "Lipid metabolism",
-    "Formation and hydrolysis of cholesterol esters",                     "Lipid metabolism",
-    "Sphingolipid metabolism",                                            "Lipid metabolism",
-    "Glycerolipid metabolism",                                            "Lipid metabolism",
-    "Glycerophospholipid metabolism",                                     "Lipid metabolism",
-    "Glucocorticoid biosynthesis",                                        "Lipid metabolism",
-    "Prostaglandin biosynthesis",                                         "Lipid metabolism",
-    "Ether lipid metabolism",                                             "Lipid metabolism",
-    "Bile acid biosynthesis",                                             "Lipid metabolism",
-    "Bile acid recycling",                                                "Lipid metabolism",
-    "Triacylglycerol synthesis",                                          "Lipid metabolism",
-    "Inositol phosphate metabolism",                                      "Lipid metabolism",
-    "Phosphatidylinositol phosphate metabolism",                          "Lipid metabolism",
-    "Oxidative phosphorylation",                                          "Energy metabolism",
-    "ROS detoxification",                                                 "Energy metabolism",
-    "Ubiquinone synthesis",                                               "Energy metabolism",
-    "Ubiquinone and other terpenoid-quinone biosynthesis",                "Energy metabolism",
-    "O-glycan metabolism",                                                "Glycan metabolism",
-    "N-glycan metabolism",                                                "Glycan metabolism",
-    "Amino sugar and nucleotide sugar metabolism",                        "Glycan metabolism",
-    "Glycosphingolipid biosynthesis-ganglio series",                      "Glycan metabolism",
-    "Glycosphingolipid biosynthesis-globo series",                        "Glycan metabolism",
-    "Glycosphingolipid biosynthesis-lacto and neolacto series",           "Glycan metabolism",
-    "Glycosphingolipid metabolism",                                       "Glycan metabolism",
-    "Glycosylphosphatidylinositol (GPI)-anchor biosynthesis",             "Glycan metabolism",
-    "Chondroitin / heparan sulfate biosynthesis",                         "Glycan metabolism",
-    "Chondroitin sulfate degradation",                                    "Glycan metabolism",
-    "Heparan sulfate degradation",                                        "Glycan metabolism",
-    "Keratan sulfate biosynthesis",                                       "Glycan metabolism",
-    "Keratan sulfate degradation",                                        "Glycan metabolism",
-    "Blood group biosynthesis",                                           "Glycan metabolism",
-    "Nicotinate and nicotinamide metabolism",                             "Vitamin and cofactor metabolism",
-    "Pantothenate and CoA metabolism",                                    "Vitamin and cofactor metabolism",
-    "Folate metabolism",                                                  "Vitamin and cofactor metabolism",
-    "Biotin metabolism",                                                  "Vitamin and cofactor metabolism",
-    "Biopterin metabolism",                                               "Vitamin and cofactor metabolism",
-    "Ascorbate and aldarate metabolism",                                  "Vitamin and cofactor metabolism",
-    "Porphyrin metabolism",                                               "Vitamin and cofactor metabolism",
-    "Retinol metabolism",                                                 "Vitamin and cofactor metabolism",
-    "Riboflavin metabolism",                                              "Vitamin and cofactor metabolism",
-    "Thiamine metabolism",                                                "Vitamin and cofactor metabolism",
-    "Vitamin B12 metabolism",                                             "Vitamin and cofactor metabolism",
-    "Vitamin B6 metabolism",                                              "Vitamin and cofactor metabolism",
-    "Vitamin D metabolism",                                               "Vitamin and cofactor metabolism",
-    "Vitamin E metabolism",                                               "Vitamin and cofactor metabolism",
-    "Vitamin C metabolism",                                               "Vitamin and cofactor metabolism",
-    "Vitamin A metabolism",                                               "Vitamin and cofactor metabolism",
-    "Vitamin B2 metabolism",                                              "Vitamin and cofactor metabolism",
-    "Heme degradation",                                                   "Vitamin and cofactor metabolism",
-    "Protein assembly",                                                   "Protein metabolism",
-    "Protein modification",                                               "Protein metabolism",
-    "Protein degradation",                                                "Protein metabolism",
-    "Peptide metabolism",                                                 "Protein metabolism",
-    "Transport reactions",                                                "Transport",
-    "Exchange/demand reactions",                                          "Transport",
-    "Xenobiotics metabolism",                                             "Xenobiotics",
-    "Drug metabolism",                                                    "Xenobiotics",
-    "Toluene degradation",                                                "Xenobiotics",
-    "octane oxidation",                                                   "Xenobiotics",
-    "Alkaloids biosynthesis",                                             "Xenobiotics",
-    "Hippurate metabolism",                                               "Xenobiotics",
-    "Insect hormone biosynthesis",                                        "Xenobiotics",
-    "Dietary fiber binding",                                              "Xenobiotics",
-    "Miscellaneous",                                                      "Other",
-    "Isolated",                                                           "Other",
-    "Pool reactions",                                                     "Other",
-    "Artificial reactions",                                               "Other",
-    "non_metabolic",                                                      "non_metabolic"
-  )
-  
-  gem_long <- gem_rxns |>
-    mutate(ensembl_id = str_extract_all(gene_association, "ENSG\\d+")) |>
-    unnest(ensembl_id) |>
-    left_join(gem_genes,          by = "ensembl_id") |>
-    left_join(gem_genes_official, by = "ensembl_id") |>
-    left_join(pathway_map,        by = "subsystem") |>
-    filter(!is.na(hugo)) |>
-    select(
-      hugo,
-      ensembl_id,
-      gene_name,
-      uniprot,
-      compartment,
-      reaction_id,
-      reaction_name,
-      subsystem,
-      pathway_class
-    ) |>
-    distinct()
-  
-  gem_by_gene <<- gem_long |>
-    group_by(hugo, ensembl_id, gene_name, uniprot, compartment) |>
-    summarise(
-      n_reactions   = n_distinct(reaction_id),
-      n_subsystems  = n_distinct(subsystem),
-      subsystems    = paste(unique(subsystem), collapse = ";"),
-      pathway_class = paste(unique(pathway_class), collapse = ";"),
-      reactions     = paste(unique(reaction_id), collapse = ";"),
-      .groups = "drop"
-    )
-  
-  write_tsv(
-    gem_by_gene,
-    "../processed/human_gem_gene_subsystem_summary.tsv"
-  )
-  
+  beat_genes <- colnames(expr_beat_wes)[-1]
+  tcga_genes <- colnames(expr_tcga_wes)[-1]
+
+  shared <- intersect(beat_genes, tcga_genes)
+  only_beat <- setdiff(beat_genes, tcga_genes)
+  only_tcga <- setdiff(tcga_genes, beat_genes)
+
+  gem_genes <- unique(na.omit(gem_by_gene$hugo))
+
+  gem_only_beat <- intersect(only_beat, gem_genes)
+  gem_only_tcga <- intersect(only_tcga, gem_genes)
+
+  beat_lin <- 2^as.matrix(expr_beat_wes[-1]) - 1
+  tcga_lin <- as.matrix(expr_tcga_wes[-1])
+
+  beat_spec <- rowSums(beat_lin[, only_beat, drop = FALSE])
+  tcga_spec <- rowSums(tcga_lin[, only_tcga, drop = FALSE])
+
+  beat_gem_spec <- rowSums(beat_lin[, gem_only_beat, drop = FALSE])
+  tcga_gem_spec <- rowSums(tcga_lin[, gem_only_tcga, drop = FALSE])
+
   tibble(
-    metric = c(
-      "Metabolic genes",
-      "Gene-reaction pairs",
-      "Reactions with gene association",
-      "Metabolic subsystems",
-      "Pathway classes",
-      "Genes without pathway class"
+    cohort = c("BEAT-AML", "TCGA-LAML"),
+
+    wes_samples = c(
+      n_distinct(wes$ID[wes$cohort == "BEAT-AML"]),
+      n_distinct(wes$ID[wes$cohort == "TCGA"])
     ),
-    value = c(
-      n_distinct(gem_by_gene$hugo),
-      nrow(gem_long),
-      n_distinct(gem_long$reaction_id),
-      n_distinct(gem_long$subsystem),
-      n_distinct(gem_long$pathway_class, na.rm = TRUE),
-      sum(is.na(gem_by_gene$pathway_class) | gem_by_gene$pathway_class == "")
+
+    rna_samples = c(
+      n_distinct(expr_beat$sample_id),
+      n_distinct(expr_tcga$sample_id)
+    ),
+
+    matched_samples = c(
+      nrow(expr_beat_wes),
+      nrow(expr_tcga_wes)
+    ),
+
+    total_genes = c(
+      length(beat_genes),
+      length(tcga_genes)
+    ),
+
+    shared_genes = length(shared),
+
+    specific_genes = c(
+      length(only_beat),
+      length(only_tcga)
+    ),
+
+    human_gem_specific = c(
+      length(gem_only_beat),
+      length(gem_only_tcga)
+    ),
+
+    human_gem_specific_pct = c(
+      length(gem_only_beat) / length(only_beat),
+      length(gem_only_tcga) / length(only_tcga)
+    ),
+
+    zero_shared = c(
+      mean(as.matrix(expr_beat_wes[shared]) == 0),
+      mean(as.matrix(expr_tcga_wes[shared]) == 0)
+    ),
+
+    zero_specific = c(
+      mean(as.matrix(expr_beat_wes[only_beat]) == 0),
+      mean(as.matrix(expr_tcga_wes[only_tcga]) == 0)
+    ),
+
+    mean_specific_expression = c(
+      mean(beat_spec),
+      mean(tcga_spec)
+    ),
+
+    mean_specific_fraction = c(
+      mean(beat_spec / rowSums(beat_lin)),
+      mean(tcga_spec / rowSums(tcga_lin))
+    ),
+
+    mean_human_gem_specific_fraction = c(
+      mean(beat_gem_spec / rowSums(beat_lin)),
+      mean(tcga_gem_spec / rowSums(tcga_lin))
     )
   ) |>
-    knitr::kable(
-      col.names = c("Summary", "Value"),
-      align = c("l", "c")
+    mutate(
+      across(
+        c(starts_with("zero_"), human_gem_specific_pct),
+        ~ scales::percent(.x, accuracy = 0.01)
+      ),
+      mean_specific_expression = round(mean_specific_expression, 2),
+      mean_specific_fraction = scales::percent(
+        mean_specific_fraction,
+        accuracy = 0.01
+      ),
+      mean_human_gem_specific_fraction =
+        sprintf("%.2e%%", mean_human_gem_specific_fraction * 100)
+    ) |>
+    kable(
+      col.names = c(
+        "Cohort",
+        "WES samples",
+        "RNA samples",
+        "Matched RNA-WES",
+        "Total genes",
+        "Shared genes",
+        "Cohort-specific genes",
+        "Human-GEM specific genes",
+        "Human-GEM specific genes (%)",
+        "Zeros in shared genes",
+        "Zeros in cohort-specific genes",
+        "Mean cohort-specific expression/sample (linear TMM-CPM)",
+        "Mean expression in cohort-specific genes (%)",
+        "Mean expression in Human-GEM cohort-specific genes (%)"
+      ),
+      align = c("l", rep("c", 13))
     )
 })
 ```
-
 
 ## NGS-PTL metabolomics TO DO
 

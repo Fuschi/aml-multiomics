@@ -16,10 +16,9 @@ Multi-omics integration project for AML cohorts (BEAT-AML, TCGA-LAML, NGS-PTL).
 
 ## R style
 - tidyverse preferable to base R equivalents
-- pipe: |>
 - plots: ggplot2
 
 ## Notes
 - BEAT-AML and TCGA cannot be merged (different normalizations, must be analyzed separately)
-- NGS-PTL metabolome sample IDs (numeric) not yet matched to WES IDs — mapping table needed
+- NGS-PTL metabolome sample IDs (numeric) not yet matched to WES IDs - mapping table needed
 - Karyotype file appears incomplete (columns F-R missing)
